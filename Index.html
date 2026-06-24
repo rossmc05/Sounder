@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sounder — Solunar Bite Forecast</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --deep: #081A1E;
+    --water: #102E34;
+    --water-light: #1B454D;
+    --water-border: #234F57;
+    --mist: #CBE3DF;
+    --mist-dim: #6E8E8A;
+    --amber: #E2934F;
+    --amber-dim: #8A5C32;
+    --silver: #DCDCC8;
+    --silver-dim: #7A7A6A;
+    --good: #8FBE73;
+    --fair: #D8B658;
+    --poor: #C97A6B;
+    --radius: 14px;
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: radial-gradient(ellipse 1200px 800px at 50% -10%, #123339 0%, var(--deep) 55%);
+    color: var(--mist);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 28px 16px 60px;
+  }
+  .app{ max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+  .panel{
+    background: linear-gradient(180deg, var(--water) 0%, #0D272C 100%);
+    border: 1px solid var(--water-border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+
+  .eyebrow{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin: 0 0 6px;
+  }
+  h1{
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 30px;
+    margin: 0 0 2px;
+    color: var(--mist);
+    letter-spacing: -0.01em;
+  }
+  .sub{ color: var(--mist-dim); font-size: 13.5px; margin: 0 0 18px; }
+
+  /* ---- header controls ---- */
+  .controls{ display:flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field label{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 10.5px; letter-spacing:0.08em; text-transform:uppercase; color: var(--mist-dim);
+  }
+  .field input[type="number"], .field input[type="date"]{
+    background: var(--deep);
+    border: 1px solid var(--water-border);
+    color: var(--mist);
+    font-family:'JetBrains Mono', monospace;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    width: 110px;
+    outline: none;
+  }
+  .field input:focus{ border-color: var(--amber); }
+  .btn{
+    font-family:'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid var(--water-border);
+    background: var(--water-light);
+    color: var(--mist);
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .btn:hover{ border-color: var(--amber); }
+  .btn:focus-visible{ outline: 2px solid var(--amber); outline-offset: 2px; }
+  .btn.primary{ background: var(--amber-dim); border-color: var(--amber); color: #FFF3E8; }
+  .btn.ghost{ background: transparent; }
+  .btn.small{ padding: 7px 10px; font-size: 12px; }
+  .date-nav{ display:flex; align-items:center; gap:8px; }
+  .coord-readout{ font-family:'JetBrains Mono', monospace; font-size: 11.5px; color: var(--mist-dim); margin-top: 8px; }
+
+  .location-field{ min-width: 220px; flex: 1 1 240px; }
+  .search-row{ display:flex; gap:6px; }
+  .search-row input[type="text"]{
+    flex: 1; min-width: 140px;
+    background: var(--deep);
+    border: 1px solid var(--water-border);
+    color: var(--mist);
+    font-family: 'Inter', sans-serif;
+    font-size: 13.5px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    outline: none;
+  }
+  .search-row input[type="text"]:focus{ border-color: var(--amber); }
+  .place-current{ font-size: 13.5px; color: var(--mist-dim); margin: 12px 0 0; }
+  .place-readout{ color: var(--mist); font-weight: 600; }
+  .place-readout.loading{ color: var(--mist-dim); font-style: italic; font-weight: 400; }
+  .search-error{ font-size: 12.5px; color: var(--poor); margin: 6px 0 0; }
+  .search-error[hidden]{ display:none; }
+  .manual-coords{
+    display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;
+    margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--water-border);
+  }
+  .manual-coords[hidden]{ display:none; }
+
+  /* ---- score card ---- */
+  .score-row{ display:flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .gauge-wrap{ position:relative; width:148px; height:96px; flex-shrink:0; }
+  .gauge-num{
+    position:absolute; bottom:0; left:0; width:100%; text-align:center;
+    font-family:'Space Grotesk', sans-serif; font-weight:700; font-size: 34px; color: var(--mist);
+  }
+  .gauge-num span{ font-size: 14px; color: var(--mist-dim); font-weight:500; margin-left:2px; }
+  .score-info{ flex: 1; min-width: 220px; }
+  .status-pill{
+    display:inline-block; font-family:'JetBrains Mono', monospace; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 20px;
+    margin-bottom: 8px;
+  }
+  .reasons{ list-style:none; margin: 4px 0 0; padding:0; display:flex; flex-direction:column; gap:5px; }
+  .reasons li{ font-size: 13px; color: var(--mist); display:flex; gap:8px; }
+  .reasons li::before{ content:"›"; color: var(--amber); font-weight:700; }
+
+  /* ---- timeline ---- */
+  .timeline-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 10px; }
+  .timeline-head h2{ font-family:'Space Grotesk', sans-serif; font-size: 15px; margin:0; color: var(--mist); }
+  .timeline-date{ font-family:'JetBrains Mono', monospace; font-size:12px; color: var(--mist-dim); }
+  svg.tl{ width: 100%; height: auto; display:block; }
+  .legend{ display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:11.5px; color: var(--mist-dim); }
+  .legend-dot{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .windows-list{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .window-chip{
+    font-family:'JetBrains Mono', monospace; font-size: 12px; color: var(--mist);
+    background: var(--water-light); border: 1px solid var(--water-border);
+    border-radius: 20px; padding: 6px 12px;
+  }
+  .window-chip.empty{ color: var(--mist-dim); font-family:'Inter', sans-serif; font-style: italic; border-style: dashed; background: transparent; }
+
+  /* ---- conditions / weather ---- */
+  .pressure-row{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .pressure-label{ font-family:'JetBrains Mono', monospace; font-size: 11px; letter-spacing:0.08em; text-transform:uppercase; color: var(--mist-dim); }
+  .pressure-btns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .pbtn{
+    font-size:13px; font-weight:600; padding: 8px 14px; border-radius:8px; cursor:pointer;
+    border: 1px solid var(--water-border); background: var(--deep); color: var(--mist-dim);
+  }
+  .pbtn.active{ border-color: var(--amber); color: var(--mist); background: var(--water-light); }
+  .pressure-note{ font-size:12.5px; color: var(--mist-dim); margin-top:14px; }
+  .weather-status{
+    font-size: 13px; color: var(--mist); margin: 0 0 16px; line-height: 1.5;
+    display:flex; align-items:flex-start; gap:8px;
+  }
+  .weather-status.pending{ color: var(--mist-dim); font-style: italic; }
+  .condition-controls{ display:flex; flex-direction:column; gap:14px; }
+  .condition-group{ display:flex; flex-direction:column; gap:6px; }
+
+  /* ---- lure recommender ---- */
+  .lure-inputs{ display:flex; flex-direction:column; gap:14px; margin-bottom: 16px; }
+  .lure-temp-row{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  .lure-temp-row input[type="number"]{
+    background: var(--deep); border: 1px solid var(--water-border); color: var(--mist);
+    font-family:'JetBrains Mono', monospace; font-size: 15px; padding: 8px 10px; border-radius: 8px; width: 90px; outline:none;
+  }
+  .lure-temp-row input[type="number"]:focus{ border-color: var(--amber); }
+  .lure-help{ font-size: 12px; color: var(--mist-dim); }
+  .lure-status{ font-size: 12.5px; color: var(--mist-dim); margin: 0 0 14px; }
+  .lure-result{ display:flex; flex-direction:column; gap:14px; }
+  .lure-tag{ font-family:'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing:0.08em; text-transform:uppercase; color: var(--amber); }
+  .lure-primary h3{ font-family:'Space Grotesk', sans-serif; font-size: 20px; margin: 4px 0 6px; color: var(--mist); }
+  .lure-retrieve{ font-size: 13.5px; color: var(--mist); margin: 0; }
+  .lure-depth{ display:flex; flex-direction:column; gap:2px; }
+  .lure-depth-value{ font-family:'JetBrains Mono', monospace; font-size: 17px; color: var(--amber); font-weight:600; }
+  .lure-color{ display:flex; align-items:center; gap:12px; }
+  .color-swatch{ width: 28px; height: 28px; border-radius: 8px; border: 2px solid var(--water-border); flex-shrink:0; }
+  .lure-color strong{ color: var(--mist); font-size: 13.5px; }
+  .lure-dim{ color: var(--mist-dim); font-size: 12.5px; }
+  .lure-rationale{ font-size: 13px; color: var(--mist-dim); margin:0; line-height:1.5; }
+  .lure-alts ul{ list-style:none; margin: 6px 0 0; padding:0; display:flex; flex-direction:column; gap:4px; }
+  .lure-alts li{ font-size: 13px; color: var(--mist); display:flex; gap:8px; }
+  .lure-alts li::before{ content:"›"; color: var(--amber); font-weight:700; }
+
+  /* ---- outlook ---- */
+  .outlook-grid{ display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .day-card{
+    background: var(--deep); border: 1px solid var(--water-border); border-radius: 10px;
+    padding: 10px 6px; text-align:center; cursor:pointer; transition: border-color .15s, transform .1s;
+  }
+  .day-card:hover{ border-color: var(--amber); }
+  .day-card.selected{ border-color: var(--amber); background: var(--water-light); }
+  .day-card .dow{ font-family:'JetBrains Mono', monospace; font-size:10.5px; color: var(--mist-dim); text-transform:uppercase; }
+  .day-card .dnum{ font-family:'Space Grotesk', sans-serif; font-size: 18px; font-weight:700; margin: 4px 0 2px; }
+  .day-card .moonicon{ font-size: 14px; margin-bottom: 2px; }
+
+  .footnote{ font-size: 12px; color: var(--mist-dim); line-height:1.5; padding: 0 4px; }
+  .footnote a{ color: var(--amber); text-decoration:none; }
+
+  @media (max-width: 560px){
+    .outlook-grid{ grid-template-columns: repeat(4, 1fr); }
+    .gauge-wrap{ width: 120px; height: 80px; }
+    .gauge-num{ font-size: 28px; }
+    h1{ font-size: 24px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="panel">
+    <p class="eyebrow">Solunar Bite Forecast</p>
+    <h1>Sounder</h1>
+    <p class="sub">Reads the moon, sun, and your pressure trend to find the best windows to be on the water.</p>
+
+    <div class="controls">
+      <div class="field location-field">
+        <label for="placeSearch">Search a town or lake</label>
+        <div class="search-row">
+          <input type="text" id="placeSearch" placeholder="e.g. Elgin, Ontario">
+          <button class="btn small" id="searchBtn" type="button">Find</button>
+        </div>
+      </div>
+      <button class="btn" id="geoBtn" type="button">Use my location</button>
+      <button class="btn ghost small" id="manualToggle" type="button" aria-expanded="false">Set coordinates</button>
+      <div class="field">
+        <label for="dateInput">Date</label>
+        <input type="date" id="dateInput">
+      </div>
+      <div class="date-nav">
+        <button class="btn small ghost" id="prevDay" type="button" aria-label="Previous day">‹</button>
+        <button class="btn small" id="todayBtn" type="button">Today</button>
+        <button class="btn small ghost" id="nextDay" type="button" aria-label="Next day">›</button>
+      </div>
+    </div>
+    <p class="place-current">Showing forecast for <span class="place-readout loading" id="placeLabel">Locating…</span></p>
+    <p class="search-error" id="searchError" hidden></p>
+    <div class="manual-coords" id="manualCoords" hidden>
+      <div class="field">
+        <label for="lat">Latitude</label>
+        <input type="number" id="lat" step="0.0001" value="51.0501">
+      </div>
+      <div class="field">
+        <label for="lon">Longitude</label>
+        <input type="number" id="lon" step="0.0001" value="-114.0853">
+      </div>
+    </div>
+    <p class="coord-readout" id="coordReadout"></p>
+  </div>
+
+  <div class="panel">
+    <div class="score-row">
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 148 96" width="148" height="96">
+          <path d="M 12 86 A 62 62 0 0 1 136 86" fill="none" stroke="#0D272C" stroke-width="12" stroke-linecap="round"/>
+          <path id="gaugeArc" d="M 12 86 A 62 62 0 0 1 136 86" fill="none" stroke="var(--amber)" stroke-width="12" stroke-linecap="round" stroke-dasharray="195 195" stroke-dashoffset="195"/>
+        </svg>
+        <div class="gauge-num" id="gaugeNum">—</div>
+      </div>
+      <div class="score-info">
+        <span class="status-pill" id="statusPill">—</span>
+        <ul class="reasons" id="reasonsList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="timeline-head">
+      <h2>Bite score — today</h2>
+      <span class="timeline-date" id="scoreChartDate"></span>
+    </div>
+    <svg class="tl" id="scoreSvg" viewBox="0 0 480 168" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:var(--good)"></span> Excellent / Good</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--fair)"></span> Fair</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--poor)"></span> Poor</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span> Bite score</div>
+    </div>
+    <div class="windows-list" id="windowsList"></div>
+  </div>
+
+  <div class="panel">
+    <div class="timeline-head">
+      <h2>24-hour window</h2>
+      <span class="timeline-date" id="timelineDate"></span>
+    </div>
+    <svg class="tl" id="tlSvg" viewBox="0 0 480 200" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span> Sun altitude</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--silver-dim)"></span> Moon up</div>
+      <div class="legend-item"><span class="legend-dot" style="background:rgba(226,147,79,0.55)"></span> Major period</div>
+      <div class="legend-item"><span class="legend-dot" style="background:rgba(220,220,200,0.35)"></span> Minor period</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="timeline-head">
+      <h2>Conditions</h2>
+      <button class="btn small ghost" id="refreshWeather" type="button">Refresh</button>
+    </div>
+    <p class="weather-status pending" id="weatherStatus">Checking live forecast…</p>
+
+    <div class="condition-controls" id="conditionControls">
+      <div class="condition-group">
+        <span class="pressure-label">Pressure trend</span>
+        <div class="pressure-btns">
+          <button class="pbtn active" data-group="pressure" data-v="auto">Auto</button>
+          <button class="pbtn" data-group="pressure" data-v="falling">Falling</button>
+          <button class="pbtn" data-group="pressure" data-v="steady">Steady</button>
+          <button class="pbtn" data-group="pressure" data-v="rising">Rising</button>
+        </div>
+      </div>
+      <div class="condition-group">
+        <span class="pressure-label">Cloud cover</span>
+        <div class="pressure-btns">
+          <button class="pbtn active" data-group="cloud" data-v="auto">Auto</button>
+          <button class="pbtn" data-group="cloud" data-v="clear">Clear</button>
+          <button class="pbtn" data-group="cloud" data-v="partly_cloudy">Partly cloudy</button>
+          <button class="pbtn" data-group="cloud" data-v="overcast">Overcast</button>
+        </div>
+      </div>
+      <div class="condition-group">
+        <span class="pressure-label">Precipitation</span>
+        <div class="pressure-btns">
+          <button class="pbtn active" data-group="precip" data-v="auto">Auto</button>
+          <button class="pbtn" data-group="precip" data-v="none">None</button>
+          <button class="pbtn" data-group="precip" data-v="light">Light rain</button>
+          <button class="pbtn" data-group="precip" data-v="heavy">Heavy / storms</button>
+        </div>
+      </div>
+    </div>
+    <p class="pressure-note">Bass tend to feed harder as pressure drops ahead of a front, and go quiet once it's risen and settled. Overcast skies often extend the active bite beyond just dawn and dusk; light rain can trigger a strong reaction bite, while heavy rain or storms tend to shut things down — and aren't worth the safety risk anyway. "Auto" looks up a live forecast; switch any of these to a manual setting if it doesn't match what you're seeing.</p>
+  </div>
+
+  <div class="panel">
+    <div class="timeline-head"><h2>Lure recommender</h2></div>
+
+    <div class="lure-inputs">
+      <div class="lure-temp-row">
+        <div class="field">
+          <label for="waterTemp">Water temp (°C)</label>
+          <input type="number" id="waterTemp" value="18" min="0" max="35" step="1">
+        </div>
+        <div class="field">
+          <label for="spotDepth">Depth here (ft)</label>
+          <input type="number" id="spotDepth" placeholder="optional" min="0" max="200" step="1">
+        </div>
+        <span class="lure-help">Water temp matters more than anything else here — check your electronics or a hand thermometer. Spot depth is optional, but keeps the target depth realistic for shallow water.</span>
+      </div>
+      <div class="condition-group">
+        <span class="pressure-label">Water clarity</span>
+        <div class="pressure-btns" id="clarityBtns">
+          <button class="pbtn" data-v="clear">Clear</button>
+          <button class="pbtn active" data-v="stained">Stained</button>
+          <button class="pbtn" data-v="murky">Murky</button>
+        </div>
+      </div>
+      <div class="condition-group">
+        <span class="pressure-label">Season</span>
+        <div class="pressure-btns" id="seasonBtns">
+          <button class="pbtn active" data-v="auto">Auto</button>
+          <button class="pbtn" data-v="spring">Spring</button>
+          <button class="pbtn" data-v="summer">Summer</button>
+          <button class="pbtn" data-v="fall">Fall</button>
+          <button class="pbtn" data-v="winter">Winter</button>
+        </div>
+      </div>
+      <div class="condition-group">
+        <span class="pressure-label">Time of day</span>
+        <div class="pressure-btns" id="timeBtns">
+          <button class="pbtn active" data-v="auto">Auto</button>
+          <button class="pbtn" data-v="dawn">Dawn</button>
+          <button class="pbtn" data-v="midday">Midday</button>
+          <button class="pbtn" data-v="afternoon">Afternoon</button>
+          <button class="pbtn" data-v="dusk">Dusk</button>
+          <button class="pbtn" data-v="night">Night</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="lure-status" id="lureStatus"></p>
+    <div class="lure-result" id="lureResult"></div>
+  </div>
+
+  <div class="panel">
+    <div class="timeline-head"><h2>7-day outlook</h2></div>
+    <div class="outlook-grid" id="outlookGrid"></div>
+  </div>
+
+  <p class="footnote">Solunar theory is a century-old fishing heuristic, not a scientific guarantee — treat it as one more clue, alongside water temp, structure, and what's actually working that day. Times are calculated from the coordinates above using your device's clock, and rise/set times are accurate to within a few minutes. Live pressure, cloud, and rain conditions are looked up automatically for the selected date when possible; for dates too far out to forecast, switch any of the Conditions controls to a manual setting. The 7-day outlook applies today's conditions across the week for simplicity — use the daily view for the most current read.</p>
+  <p class="footnote">Heavy weather call: gusty storms and lightning aren't worth the risk no matter how good the bite looks on paper.</p>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ================= Astronomy engine =================
+  const RAD = Math.PI / 180;
+  const DAY_MS = 86400000;
+  const J2000 = 946728000000; // 2000-01-01T12:00:00Z
+  const OBLIQ = RAD * 23.4397;
+
+  function toDays(date){ return (date.getTime() - J2000) / DAY_MS; }
+  function rightAscension(l,b){ return Math.atan2(Math.sin(l)*Math.cos(OBLIQ)-Math.tan(b)*Math.sin(OBLIQ), Math.cos(l)); }
+  function declination(l,b){ return Math.asin(Math.sin(b)*Math.cos(OBLIQ)+Math.cos(b)*Math.sin(OBLIQ)*Math.sin(l)); }
+
+  function sunCoords(d){
+    const M = RAD*(357.5291 + 0.98560028*d);
+    const C = RAD*(1.9148*Math.sin(M) + 0.02*Math.sin(2*M) + 0.0003*Math.sin(3*M));
+    const P = RAD*102.9372;
+    const L = M + C + P + Math.PI;
+    return { ra: rightAscension(L,0), dec: declination(L,0), lon: L };
+  }
+  function moonCoords(d){
+    const L = RAD*(218.316 + 13.176396*d);
+    const M = RAD*(134.963 + 13.064993*d);
+    const F = RAD*(93.272 + 13.229350*d);
+    const l = L + RAD*6.289*Math.sin(M);
+    const b = RAD*5.128*Math.sin(F);
+    return { ra: rightAscension(l,b), dec: declination(l,b), lon: l };
+  }
+  function siderealTime(d, lwRad){ return RAD*(280.16 + 360.9856235*d) - lwRad; }
+  function altitudeOf(date, lat, lon, coordsFn){
+    const d = toDays(date);
+    const c = coordsFn(d);
+    const H = siderealTime(d, RAD*-lon) - c.ra;
+    const phi = RAD*lat;
+    return Math.asin(Math.sin(phi)*Math.sin(c.dec) + Math.cos(phi)*Math.cos(c.dec)*Math.cos(H)) / RAD;
+  }
+
+  function sampleDay(localMidnightMs, stepMin, lat, lon, coordsFn){
+    const pts = [];
+    for(let m=0; m<=24*60; m+=stepMin){
+      const t = new Date(localMidnightMs + m*60000);
+      pts.push({ t, m, alt: altitudeOf(t, lat, lon, coordsFn) });
+    }
+    return pts;
+  }
+  function crossingsAndExtrema(pts, threshold){
+    let rise=null, set=null, maxAlt=-999, maxT=null, minAlt=999, minT=null;
+    for(let i=1;i<pts.length;i++){
+      const p=pts[i-1], c=pts[i];
+      if(p.alt<threshold && c.alt>=threshold && !rise) rise=c.t;
+      if(p.alt>=threshold && c.alt<threshold && !set) set=c.t;
+      if(c.alt>maxAlt){ maxAlt=c.alt; maxT=c.t; }
+      if(c.alt<minAlt){ minAlt=c.alt; minT=c.t; }
+    }
+    return {rise,set,maxAlt,maxT,minAlt,minT};
+  }
+  function moonIllumination(date){
+    const d = toDays(date);
+    const sc = sunCoords(d), mc = moonCoords(d);
+    let dLon = (mc.lon - sc.lon) % (2*Math.PI);
+    if(dLon<0) dLon += 2*Math.PI;
+    return { illum: (1-Math.cos(dLon))/2, age: dLon/(2*Math.PI) };
+  }
+  function phaseName(age){
+    if(age<0.03||age>0.97) return 'New Moon';
+    if(age<0.22) return 'Waxing Crescent';
+    if(age<0.28) return 'First Quarter';
+    if(age<0.47) return 'Waxing Gibbous';
+    if(age<0.53) return 'Full Moon';
+    if(age<0.72) return 'Waning Gibbous';
+    if(age<0.78) return 'Last Quarter';
+    return 'Waning Crescent';
+  }
+  function phaseGlyph(name){
+    return { 'New Moon':'🌑','Waxing Crescent':'🌒','First Quarter':'🌓','Waxing Gibbous':'🌔','Full Moon':'🌕','Waning Gibbous':'🌖','Last Quarter':'🌗','Waning Crescent':'🌘' }[name] || '🌕';
+  }
+
+  function computeDay(localMidnightMs, lat, lon, pressureTrend, weather, stepMin){
+    const sunPts = sampleDay(localMidnightMs, stepMin, lat, lon, sunCoords);
+    const moonPts = sampleDay(localMidnightMs, stepMin, lat, lon, moonCoords);
+    const sun = crossingsAndExtrema(sunPts, -0.833);
+    const moon = crossingsAndExtrema(moonPts, 0);
+    const ph = moonIllumination(new Date(localMidnightMs + 12*3600000));
+    const phaseBonus = Math.abs(ph.illum - 0.5) * 2 * 12;
+    const pressureAdj = pressureTrend === 'falling' ? 10 : pressureTrend === 'rising' ? -12 : 0;
+    const cloud = (weather && weather.cloud) || 'partly_cloudy';
+    const precip = (weather && weather.precip) || 'none';
+    const cloudAdj = cloud === 'overcast' ? 12 : cloud === 'clear' ? -8 : 0;
+    const precipAdj = precip === 'light' ? 10 : precip === 'heavy' ? -15 : 0;
+
+    function scoreAt(tMs){
+      let s = 25;
+      const nearMajor = (moon.maxT && Math.abs(tMs-moon.maxT.getTime()) <= 60*60000) || (moon.minT && Math.abs(tMs-moon.minT.getTime()) <= 60*60000);
+      const nearMinor = !nearMajor && ((moon.rise && Math.abs(tMs-moon.rise.getTime()) <= 30*60000) || (moon.set && Math.abs(tMs-moon.set.getTime()) <= 30*60000));
+      const nearDawnDusk = (sun.rise && Math.abs(tMs-sun.rise.getTime()) <= 45*60000) || (sun.set && Math.abs(tMs-sun.set.getTime()) <= 45*60000);
+      if(nearMajor) s += 30; else if(nearMinor) s += 15;
+      if(nearDawnDusk) s += 22;
+      if(nearMajor && nearDawnDusk) s += 8;
+      s += phaseBonus;
+      s += pressureAdj;
+      if(!nearMajor && !nearDawnDusk) s += cloudAdj; // cloud cover mainly widens the mid-day window
+      s += precipAdj;
+      return Math.max(0, Math.min(100, Math.round(s)));
+    }
+
+    let peak = 0, peakT = null;
+    for(const p of sunPts){
+      const sc = scoreAt(p.t.getTime());
+      if(sc > peak){ peak = sc; peakT = p.t; }
+    }
+    return { sunPts, moonPts, sun, moon, phase: { ...ph, name: phaseName(ph.age) }, peak, peakT, scoreAt, cloud, precip };
+  }
+
+  // ================= State =================
+  const state = {
+    lat: 51.0501,
+    lon: -114.0853,
+    date: startOfLocalDay(new Date()),
+    pressureMode: 'auto',
+    cloudMode: 'auto',
+    precipMode: 'auto',
+    weather: null,
+    weatherStatusText: 'Checking live forecast…',
+    lureClarity: 'stained',
+    lureSeasonMode: 'auto',
+    lureTimeMode: 'auto'
+  };
+
+  function effectivePressure(){
+    if(state.pressureMode !== 'auto') return state.pressureMode;
+    return (state.weather && state.weather.pressureTrend) || 'steady';
+  }
+  function effectiveCloud(){
+    if(state.cloudMode !== 'auto') return state.cloudMode;
+    return (state.weather && state.weather.cloud) || 'partly_cloudy';
+  }
+  function effectivePrecip(){
+    if(state.precipMode !== 'auto') return state.precipMode;
+    return (state.weather && state.weather.precip) || 'none';
+  }
+  function seasonFromDate(date, lat){
+    let month = date.getMonth(); // 0-11
+    if(lat < 0) month = (month + 6) % 12; // flip for southern hemisphere
+    if(month===11 || month===0 || month===1) return 'winter';
+    if(month>=2 && month<=4) return 'spring';
+    if(month>=5 && month<=7) return 'summer';
+    return 'fall';
+  }
+  function autoTimeBucket(){
+    const h = new Date().getHours();
+    if(h>=5 && h<8) return 'dawn';
+    if(h>=8 && h<16) return 'midday';
+    if(h>=16 && h<18) return 'afternoon';
+    if(h>=18 && h<21) return 'dusk';
+    return 'night';
+  }
+  function effectiveSeason(){
+    if(state.lureSeasonMode !== 'auto') return state.lureSeasonMode;
+    return seasonFromDate(state.date, state.lat);
+  }
+  function effectiveTimeBucket(){
+    if(state.lureTimeMode !== 'auto') return state.lureTimeMode;
+    return autoTimeBucket();
+  }
+
+  function startOfLocalDay(d){
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  }
+  function addDays(d, n){
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n, 0,0,0,0);
+  }
+  function sameDate(a,b){
+    return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+  }
+  function fmtTime(d){
+    if(!d) return '—';
+    return d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+  }
+  function fmtDateInput(d){
+    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // ================= DOM refs =================
+  const latInput = document.getElementById('lat');
+  const lonInput = document.getElementById('lon');
+  const geoBtn = document.getElementById('geoBtn');
+  const manualToggle = document.getElementById('manualToggle');
+  const manualCoords = document.getElementById('manualCoords');
+  const placeLabel = document.getElementById('placeLabel');
+  const placeSearch = document.getElementById('placeSearch');
+  const searchBtn = document.getElementById('searchBtn');
+  const searchError = document.getElementById('searchError');
+  const dateInput = document.getElementById('dateInput');
+  const prevDay = document.getElementById('prevDay');
+  const nextDay = document.getElementById('nextDay');
+  const todayBtn = document.getElementById('todayBtn');
+  const coordReadout = document.getElementById('coordReadout');
+  const gaugeArc = document.getElementById('gaugeArc');
+  const gaugeNum = document.getElementById('gaugeNum');
+  const statusPill = document.getElementById('statusPill');
+  const reasonsList = document.getElementById('reasonsList');
+  const tlSvg = document.getElementById('tlSvg');
+  const timelineDate = document.getElementById('timelineDate');
+  const scoreSvg = document.getElementById('scoreSvg');
+  const scoreChartDate = document.getElementById('scoreChartDate');
+  const windowsList = document.getElementById('windowsList');
+  const weatherStatus = document.getElementById('weatherStatus');
+  const refreshWeather = document.getElementById('refreshWeather');
+  const conditionControls = document.getElementById('conditionControls');
+  const waterTempInput = document.getElementById('waterTemp');
+  const spotDepthInput = document.getElementById('spotDepth');
+  const clarityBtns = document.getElementById('clarityBtns');
+  const seasonBtns = document.getElementById('seasonBtns');
+  const timeBtns = document.getElementById('timeBtns');
+  const lureStatus = document.getElementById('lureStatus');
+  const lureResult = document.getElementById('lureResult');
+  const outlookGrid = document.getElementById('outlookGrid');
+
+  dateInput.value = fmtDateInput(state.date);
+
+  // ================= Geocoding & weather =================
+  // Two different environments can run this file, with opposite network
+  // restrictions: inside Claude.ai's artifact sandbox, only api.anthropic.com
+  // is reachable; opened as a standalone downloaded file in a normal browser,
+  // general internet requests work but api.anthropic.com calls fail (no key).
+  // So every lookup below tries a free, no-key public API first, and falls
+  // back to asking Claude (with web search, for weather) if that's blocked.
+
+  function extractJSON(text){
+    if(!text) return null;
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    try{ return JSON.parse(cleaned); } catch(e){}
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if(start !== -1 && end !== -1 && end > start){
+      try{ return JSON.parse(cleaned.slice(start, end+1)); } catch(e){}
+    }
+    return null;
+  }
+
+  async function askClaudeJSON(prompt, useWebSearch){
+    const body = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    };
+    if(useWebSearch) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+
+    let response;
+    try{
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+    } catch(e){
+      throw new Error('fetch failed: ' + (e && e.message ? e.message : e));
+    }
+
+    let raw;
+    try{
+      raw = await response.text();
+    } catch(e){
+      throw new Error('could not read response body (status ' + response.status + ')');
+    }
+
+    if(!response.ok){
+      throw new Error('API status ' + response.status + ': ' + raw.slice(0, 160));
+    }
+
+    let data;
+    try{
+      data = JSON.parse(raw);
+    } catch(e){
+      throw new Error('response was not JSON: ' + raw.slice(0, 160));
+    }
+
+    if(!data || !Array.isArray(data.content)){
+      throw new Error('unexpected response shape: ' + JSON.stringify(data).slice(0, 160));
+    }
+
+    const textBlocks = data.content.filter(b=>b && b.type==='text').map(b=>b.text);
+    if(!textBlocks.length){
+      const types = data.content.map(b=>b && b.type).join(',');
+      throw new Error('no text content in response (block types: ' + types + ')');
+    }
+    const lastText = textBlocks[textBlocks.length-1] || '';
+    const parsed = extractJSON(lastText) || extractJSON(textBlocks.join('\n'));
+    if(!parsed){
+      throw new Error('could not extract JSON from reply: ' + lastText.slice(0, 160));
+    }
+    return parsed;
+  }
+
+  // ---- forward geocoding (place search) ----
+  async function searchPlaceDirect(query){
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query.split(',')[0].trim())}&count=10&language=en&format=json`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('geocoding API request failed: ' + res.status);
+    const data = await res.json();
+    const results = data.results || [];
+    if(!results.length) return null;
+    const hints = query.split(',').slice(1).map(h=>h.trim().toLowerCase()).filter(Boolean);
+    function score(r){
+      let s = 0;
+      const admin1 = (r.admin1||'').toLowerCase(), country = (r.country||'').toLowerCase();
+      for(const h of hints){
+        if(admin1 && (admin1.includes(h) || h.includes(admin1))) s += 3;
+        if(country && (country.includes(h) || h.includes(country))) s += 3;
+        if((r.country_code||'').toLowerCase() === h) s += 3;
+      }
+      s += Math.log10((r.population||1)+1) * 0.3;
+      return s;
+    }
+    results.sort((a,b)=>score(b)-score(a));
+    const best = results[0];
+    const labelParts = [best.name, best.admin1].filter(Boolean);
+    let label = labelParts.join(', ');
+    if(best.country) label += ` · ${best.country}`;
+    return { lat: best.latitude, lon: best.longitude, label };
+  }
+  async function searchPlaceViaClaude(query){
+    const prompt = `You are a geocoding lookup. Given this place description: "${query}"
+Identify the single most likely real-world town, city, or named lake it refers to. If a region, province, state, or country is included, treat it as a strong disambiguating hint and prefer a match there over a same-named place elsewhere.
+Respond with ONLY a JSON object and nothing else, no markdown fences, no explanation:
+{"found": true, "name": "<short place name>", "admin1": "<state or province, or empty string>", "country": "<country name>", "lat": <decimal latitude as a number>, "lon": <decimal longitude as a number>}
+If you cannot confidently identify a specific real place, respond with exactly:
+{"found": false}`;
+    const result = await askClaudeJSON(prompt, false);
+    if(!result || result.found === false) return null;
+    if(typeof result.lat !== 'number' || typeof result.lon !== 'number') return null;
+    const labelParts = [result.name, result.admin1].filter(Boolean);
+    let label = labelParts.join(', ');
+    if(result.country) label += ` · ${result.country}`;
+    return { lat: result.lat, lon: result.lon, label };
+  }
+  async function searchPlace(query){
+    try{
+      const direct = await searchPlaceDirect(query);
+      if(direct) return direct;
+    } catch(e){ /* blocked or unreachable — fall through */ }
+    return await searchPlaceViaClaude(query); // let failures here propagate with their real reason
+  }
+
+  async function handleSearch(){
+    const query = placeSearch.value.trim();
+    if(!query) return;
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Searching…';
+    searchError.setAttribute('hidden','');
+    try{
+      const result = await searchPlace(query);
+      if(!result){
+        searchError.textContent = `No location found for "${query}". Try a nearby town, or use Set coordinates.`;
+        searchError.removeAttribute('hidden');
+      } else {
+        geocodeSeq++; // invalidate any in-flight reverse-geocode lookup
+        state.lat = result.lat;
+        state.lon = result.lon;
+        latInput.value = state.lat.toFixed(4);
+        lonInput.value = state.lon.toFixed(4);
+        placeLabel.classList.remove('loading');
+        placeLabel.textContent = `📍 ${result.label}`;
+        placeSearch.value = result.label;
+        render();
+        updateWeather();
+      }
+    } catch(err){
+      searchError.innerHTML = `Couldn't reach live search right now (${err && err.message ? err.message : 'unknown error'}). Try again in a moment, or use <strong>Set coordinates</strong> below.`;
+      searchError.removeAttribute('hidden');
+      manualCoords.removeAttribute('hidden');
+      manualToggle.textContent = 'Hide coordinates';
+      manualToggle.setAttribute('aria-expanded','true');
+    } finally{
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Find';
+    }
+  }
+
+  // ---- reverse geocoding (nearest town to coordinates) ----
+  let geocodeSeq = 0;
+  async function reverseGeocodeDirect(lat, lon){
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+    if(!res.ok) throw new Error('reverse geocode request failed: ' + res.status);
+    const data = await res.json();
+    const city = data.city || data.locality;
+    const region = data.principalSubdivision;
+    const parts = [city, region].filter(Boolean);
+    if(parts.length) return parts.join(', ');
+    return data.countryName || null;
+  }
+  async function reverseGeocodeViaClaude(lat, lon){
+    const prompt = `What is the nearest town or city to latitude ${lat.toFixed(4)}, longitude ${lon.toFixed(4)}?
+Respond with ONLY a JSON object and nothing else, no markdown fences, no explanation:
+{"name": "<nearest town or city name>", "admin1": "<state or province, or empty string>", "country": "<country name>"}`;
+    const result = await askClaudeJSON(prompt, false);
+    if(!result || !result.name) return null;
+    const parts = [result.name, result.admin1].filter(Boolean);
+    if(parts.length) return parts.join(', ');
+    return result.country || null;
+  }
+  async function lookupPlaceName(lat, lon){
+    try{
+      const name = await reverseGeocodeDirect(lat, lon);
+      if(name) return name;
+    } catch(e){ /* blocked or unreachable — fall through */ }
+    try{
+      return await reverseGeocodeViaClaude(lat, lon);
+    } catch(e){
+      return null;
+    }
+  }
+  async function updatePlaceLabel(){
+    const seq = ++geocodeSeq;
+    placeLabel.textContent = 'Locating…';
+    placeLabel.classList.add('loading');
+    const name = await lookupPlaceName(state.lat, state.lon);
+    if(seq !== geocodeSeq) return; // a newer lookup superseded this one
+    placeLabel.classList.remove('loading');
+    placeLabel.textContent = name ? `📍 ${name}` : `📍 ${state.lat.toFixed(3)}°, ${state.lon.toFixed(3)}°`;
+  }
+
+  // ---- weather ----
+  async function fetchWeatherDirect(lat, lon, date){
+    const y = date.getFullYear(), m = String(date.getMonth()+1).padStart(2,'0'), d = String(date.getDate()).padStart(2,'0');
+    const dateStr = `${y}-${m}-${d}`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=surface_pressure,cloudcover,precipitation&start_date=${dateStr}&end_date=${dateStr}&timezone=auto`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('weather API request failed: ' + res.status);
+    const data = await res.json();
+    const h = data.hourly;
+    if(!h || !h.surface_pressure || !h.surface_pressure.length) throw new Error('no weather data for that date');
+    const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+    const pressures = h.surface_pressure, clouds = h.cloudcover, precs = h.precipitation;
+    const delta = pressures[pressures.length-1] - pressures[0];
+    const pressureTrend = delta <= -1.5 ? 'falling' : delta >= 1.5 ? 'rising' : 'steady';
+    const pressureHpa = Math.round(avg(pressures));
+    const cloudAvg = avg(clouds);
+    const cloud = cloudAvg < 30 ? 'clear' : cloudAvg < 70 ? 'partly_cloudy' : 'overcast';
+    const precipSum = precs.reduce((a,b)=>a+b,0);
+    const precip = precipSum <= 0.2 ? 'none' : precipSum <= 4 ? 'light' : 'heavy';
+    const cloudLabel = cloud==='overcast' ? 'Overcast' : cloud==='partly_cloudy' ? 'Partly cloudy' : 'Clear';
+    const summary = `${cloudLabel} skies, pressure ~${pressureHpa} hPa and ${pressureTrend}${precip!=='none' ? `, ${precip} rain expected` : ''}.`;
+    return { found: true, pressureTrend, pressureHpa, cloud, precip, tempC: null, summary };
+  }
+  async function fetchWeatherViaClaude(lat, lon, date){
+    const dateStr = date.toLocaleDateString(undefined, { year:'numeric', month:'long', day:'numeric' });
+    const prompt = `Search the web for the weather forecast for latitude ${lat.toFixed(3)}, longitude ${lon.toFixed(3)} on ${dateStr}.
+I need three things for that day: the barometric pressure trend (is it generally falling, steady, or rising through the day), the expected cloud cover, and expected precipitation.
+After researching, respond with ONLY a final JSON object and nothing else, no markdown fences, no other commentary, in exactly this format:
+{"found": true, "pressureTrend": "falling", "pressureHpa": 1013, "cloud": "partly_cloudy", "precip": "none", "tempC": 18, "summary": "<one short plain sentence describing conditions>"}
+Use only these allowed values: pressureTrend must be "falling", "steady", or "rising". cloud must be "clear", "partly_cloudy", or "overcast". precip must be "none", "light", or "heavy".
+If you cannot find reliable weather data for that date and location, respond with exactly:
+{"found": false}`;
+    const result = await askClaudeJSON(prompt, true);
+    if(!result || result.found === false) return null;
+    return result;
+  }
+  async function fetchWeather(lat, lon, date){
+    try{
+      const direct = await fetchWeatherDirect(lat, lon, date);
+      if(direct) return direct;
+    } catch(e){ /* blocked, unreachable, or date out of range — fall through */ }
+    try{
+      return await fetchWeatherViaClaude(lat, lon, date);
+    } catch(e){
+      return null;
+    }
+  }
+
+  let weatherSeq = 0;
+  async function updateWeather(){
+    const seq = ++weatherSeq;
+    state.weatherStatusText = 'Checking live forecast…';
+    weatherStatus.textContent = state.weatherStatusText;
+    weatherStatus.classList.add('pending');
+    try{
+      const result = await fetchWeather(state.lat, state.lon, state.date);
+      if(seq !== weatherSeq) return;
+      if(!result){
+        state.weather = null;
+        state.weatherStatusText = 'Live forecast unavailable for this date or location — using the manual settings below.';
+      } else {
+        state.weather = result;
+        state.weatherStatusText = result.summary || 'Live forecast loaded.';
+      }
+    } catch(err){
+      if(seq !== weatherSeq) return;
+      state.weather = null;
+      state.weatherStatusText = "Couldn't reach live weather — using the manual settings below.";
+    }
+    weatherStatus.classList.remove('pending');
+    weatherStatus.textContent = state.weatherStatusText;
+    render();
+  }
+
+  // ================= Lure recommendation engine =================
+  // Pure rule-based bass-fishing heuristics — no network call, so this
+  // never breaks regardless of what's happening with the live lookups above.
+  // Each scenario also carries a baseline depth range (feet), which gets
+  // shifted by light and barometric pressure before being shown.
+  const LURE_BASE = {
+    frigid: {
+      primary: 'Jigging spoon or blade bait',
+      alts: ['Hair jig, dead-sticked on the bottom', 'Suspending jerkbait, very long pauses'],
+      retrieve: 'Dead-slow. Lift-and-drop with long pauses — bass are sluggish and won\u2019t chase far.',
+      depth: [18, 30], lightBaked: false
+    },
+    cold: {
+      primary: 'Suspending jerkbait',
+      alts: ['Lipless crankbait, slow-rolled', 'Football jig dragged on deep rock'],
+      retrieve: 'Slow: twitch, twitch, long pause. Most bites come 3\u20135 seconds into the pause.',
+      depth: [12, 22], lightBaked: false
+    },
+    cool: {
+      primary: 'Lipless crankbait',
+      alts: ['Spinnerbait, slow-rolled', 'Texas-rigged creature bait'],
+      retrieve: 'Steady and moderate, ticking the tops of grass or rock as you reel.',
+      depth: [8, 15], lightBaked: false
+    },
+    mild: {
+      primary: 'Wacky-rigged stickbait near cover',
+      alts: ['Swim jig through grass and laydowns', 'Shallow squarebill crankbait'],
+      retrieve: 'Moderate cadence with subtle twitches — fish are shallow and willing to chase.',
+      depth: [5, 12], lightBaked: false
+    },
+    warm: {
+      primary_low: 'Topwater walking bait or popper',
+      primary_bright: 'Carolina-rigged lizard or deep crankbait',
+      alts_low: ['Buzzbait over grass', 'Swim jig along the edge'],
+      alts_bright: ['Drop shot on deep structure', 'Football jig'],
+      retrieve_low: 'Steady walk-the-dog cadence — let it sit through the pauses.',
+      retrieve_bright: 'Slow and methodical, keeping bottom contact.',
+      depth_low: [1, 4], depth_bright: [10, 20], lightBaked: true,
+      suspendedSwap_bright: {
+        primary: 'Drop shot, held right at the target depth',
+        alts: ['Suspending jerkbait worked through the strike zone', 'Deep crankbait, counted down to depth']
+      }
+    },
+    hot: {
+      primary_low: 'Frog or buzzbait over grass and pads',
+      primary_bright: 'Deep crankbait or Carolina rig',
+      alts_low: ['Walking topwater at first/last light', 'Spinnerbait burned along edges'],
+      alts_bright: ['Drop shot, deep finesse worm', 'Big worm on a Carolina rig'],
+      retrieve_low: 'Slow and twitchy through cover — let fish find it before you move it again.',
+      retrieve_bright: 'Slow, deep, and deliberate — fish are holding tight to cool structure.',
+      depth_low: [1, 3], depth_bright: [15, 25], lightBaked: true,
+      suspendedSwap_bright: {
+        primary: 'Drop shot, deep finesse worm held right at the target depth',
+        alts: ['Suspending jerkbait worked through the strike zone', 'Deep crankbait, counted down to depth']
+      }
+    }
+  };
+  const LURE_SPRING = {
+    cool: { primary: 'Spinnerbait or lipless crankbait near spawning flats', alts: ['Suspending jerkbait on points', 'Chatterbait through scattered grass'], retrieve: 'Steady, searching for the warmest pockets where staging fish hold.', depth: [3, 8], lightBaked: false },
+    mild: {
+      primary: 'Texas-rigged creature bait or wacky stickbait near beds', alts: ['Swim jig around cover', 'Shallow squarebill on flats'], retrieve: 'Slow and precise — sight-fish beds if you can see them, or fan-cast pockets.', depth: [1, 5], lightBaked: false,
+      suspendedSwap: { primary: 'Wacky-rigged stickbait, counted down to the target depth', alts: ['Suspending jerkbait worked through the zone', 'Swim jig along the drop'] }
+    }
+  };
+  const LURE_FALL = {
+    cool: { primary: 'Lipless or rattling crankbait around baitfish', alts: ['Spinnerbait burned along points', 'Topwater walking bait over schooling fish'], retrieve: 'Fast and erratic — match the baitfish, bass are feeding hard before winter.', depth: [4, 10], lightBaked: false },
+    mild: { primary: 'Chatterbait or swim jig along creek channels', alts: ['Square-bill crankbait on banks', 'Topwater near baitfish balls'], retrieve: 'Moderate to fast, covering water to find schooling activity.', depth: [3, 9], lightBaked: false }
+  };
+  const LURE_COLOR = {
+    clear: { name: 'Natural & translucent', examples: 'green pumpkin, watermelon, ghost shad', swatch: '#7FA86B' },
+    stained: { name: 'Bright with flash', examples: 'chartreuse, white, chartreuse/black back', swatch: '#C9D84A' },
+    murky: { name: 'Dark & bold, add a rattle', examples: 'black/blue, junebug, black', swatch: '#1B1B22' }
+  };
+
+  function classifyTempBand(c){
+    if(c < 7) return 'frigid';
+    if(c < 13) return 'cold';
+    if(c < 18) return 'cool';
+    if(c < 23) return 'mild';
+    if(c < 28) return 'warm';
+    return 'hot';
+  }
+
+  function ftToM(ft){ return (ft * 0.3048).toFixed(1); }
+  function formatDepth(lo, hi){
+    return `${lo}\u2013${hi} ft (\u2248${ftToM(lo)}\u2013${ftToM(hi)} m)`;
+  }
+
+  // Shift a baseline depth range by light and pressure. Scenarios that
+  // already split on light (warm/hot) skip the light shift to avoid
+  // double-counting — their low/bright variants already differ.
+  function shiftDepth(depthRange, { lightBaked, lowLight, cloud, pressureTrend }){
+    let [lo, hi] = depthRange;
+    let factor = 1;
+    if(!lightBaked){
+      if(lowLight) factor *= 0.8;          // low light pulls fish shallower
+      else if(cloud === 'clear') factor *= 1.15; // bright/high light pushes them deeper
+    }
+    if(pressureTrend === 'falling') factor *= 0.92;   // active, willing to roam shallower
+    else if(pressureTrend === 'rising') factor *= 1.1; // tighter to structure, a bit deeper
+    lo = Math.max(1, Math.round(lo * factor));
+    hi = Math.max(lo + 1, Math.round(hi * factor));
+    return [lo, hi];
+  }
+
+  // Baits that already fish the whole water column / suspended fish well —
+  // if the primary is one of these, no swap is needed when fish are suspended.
+  function isSuspensionFriendly(name){
+    return /jerkbait|drop ?shot|spoon|blade bait|swimbait|underspun|damiki|flutter|jigging|spybait|topwater|popper|walking bait|frog|buzzbait|spinnerbait|lipless|rattle|chatterbait|swim jig/i.test(name);
+  }
+  // Generic fallback when a scenario has no purpose-built suspended swap.
+  const SUSPENDED_FALLBACK = {
+    primary: 'Drop shot or spoon, counted down to the strike zone',
+    alts: ['Suspending jerkbait worked through that depth', 'Underspin or swimbait counted down to the fish']
+  };
+
+  function recommendLure(waterTempC, season, clarity, timeBucket, cloud, precip, pressureTrend, spotDepthFt){
+    const c = Math.max(0, Math.min(35, waterTempC));
+    const band = classifyTempBand(c);
+    const lowLight = ['dawn','dusk','night'].includes(timeBucket) || cloud === 'overcast';
+
+    let entry = null;
+    if(band === 'cool' && season === 'spring') entry = LURE_SPRING.cool;
+    else if(band === 'mild' && season === 'spring') entry = LURE_SPRING.mild;
+    else if(band === 'cool' && season === 'fall') entry = LURE_FALL.cool;
+    else if(band === 'mild' && season === 'fall') entry = LURE_FALL.mild;
+
+    let primaryName, alts, retrieve, depthBase, lightBaked, suspendedSwap;
+    if(entry){
+      primaryName = entry.primary; alts = entry.alts; retrieve = entry.retrieve;
+      depthBase = entry.depth; lightBaked = entry.lightBaked;
+      suspendedSwap = entry.suspendedSwap;
+    } else {
+      const base = LURE_BASE[band];
+      lightBaked = base.lightBaked;
+      if(band === 'warm' || band === 'hot'){
+        primaryName = lowLight ? base.primary_low : base.primary_bright;
+        alts = lowLight ? base.alts_low : base.alts_bright;
+        retrieve = lowLight ? base.retrieve_low : base.retrieve_bright;
+        depthBase = lowLight ? base.depth_low : base.depth_bright;
+        suspendedSwap = lowLight ? null : base.suspendedSwap_bright;
+      } else {
+        primaryName = base.primary; alts = base.alts; retrieve = base.retrieve;
+        depthBase = base.depth;
+      }
+    }
+
+    let [depthLo, depthHi] = shiftDepth(depthBase, { lightBaked, lowLight, cloud, pressureTrend });
+
+    // Decide depth presentation from the ORIGINAL target zone, before any
+    // adjustment, so the three cases below can't interfere with each other.
+    let suspendedNote = '';
+    let clampNote = '';
+    if(spotDepthFt && spotDepthFt > 0){
+      if(spotDepthFt <= depthLo){
+        // Spot is shallower than the whole target zone — pull the suggestion
+        // up to the deepest water actually available and fish bottom structure.
+        const newLo = Math.max(1, Math.round(spotDepthFt * 0.6));
+        const newHi = Math.max(newLo + 1, Math.round(spotDepthFt));
+        depthLo = newLo; depthHi = newHi;
+        clampNote = ` This spot only runs about ${Math.round(spotDepthFt)} ft deep — shallower than the usual target for these conditions, so work the deepest water available and stay tight to any bottom structure.`;
+      } else if(spotDepthFt >= depthHi + 5){
+        // There's a clear cushion of open water below the entire target zone —
+        // fish are suspended off the bottom, not pinned to it.
+        const surfaceBait = /topwater|popper|walking bait|frog|buzzbait/i.test(primaryName);
+        if(surfaceBait){
+          // Surface presentation — depth below doesn't matter, fish come up for it.
+          suspendedNote = ` There's ${Math.round(spotDepthFt)} ft of water here, but this is a surface presentation — fish will come up for it regardless of how deep it is below.`;
+        } else if(suspendedSwap){
+          alts = [primaryName, ...suspendedSwap.alts];
+          primaryName = suspendedSwap.primary;
+          suspendedNote = ` At ${Math.round(spotDepthFt)} ft there's open water below the strike zone — these fish are suspended rather than sitting on bottom, so the pick swapped to something you can hold or count down to that exact depth instead of one that needs bottom contact.`;
+        } else if(isSuspensionFriendly(primaryName)){
+          suspendedNote = ` At ${Math.round(spotDepthFt)} ft there's open water below the strike zone, but this pick already covers suspended fish — just count it down to the strike zone instead of fishing it on the bottom.`;
+        } else {
+          // Bottom/cover-oriented bait over deep open water — swap to something
+          // that can be held at the fish's actual depth.
+          alts = [primaryName, ...SUSPENDED_FALLBACK.alts];
+          primaryName = SUSPENDED_FALLBACK.primary;
+          suspendedNote = ` At ${Math.round(spotDepthFt)} ft there's a lot of open water below the strike zone — these fish are suspended, not on the bottom, so the usual ${clarity}-water pick won't reach them well. Switched to a presentation you can count down and hold right at their level.`;
+        }
+        // keep the natural target zone; fish are within it, just up off bottom
+      } else {
+        // Spot depth lands within the target zone — fish are on or near the
+        // bottom here. Cap the deep end to the real bottom; bottom-contact
+        // baits are correct, so no swap.
+        depthHi = Math.round(spotDepthFt);
+        if(depthHi <= depthLo) depthLo = Math.max(1, depthHi - 1);
+        clampNote = ` Capped to this spot's ${Math.round(spotDepthFt)} ft bottom.`;
+      }
+    }
+    const depthLabel = formatDepth(depthLo, depthHi);
+
+    const color = LURE_COLOR[clarity] || LURE_COLOR.stained;
+
+    let precipNote = '';
+    if(precip === 'light') precipNote = ' Light rain right now is a bonus — reaction baits often get crushed in a gentle rain.';
+    else if(precip === 'heavy') precipNote = ' Heavy rain or storms — safety first; bites can still be reactive right before or after the front passes.';
+
+    let pressureNote = '';
+    if(pressureTrend === 'falling') pressureNote = ' Falling pressure also tends to pull fish a little shallower and more active.';
+    else if(pressureTrend === 'rising') pressureNote = ' Rising pressure tends to push fish tighter to structure and slightly deeper.';
+
+    const rationale = `${Math.round(c)}\u00b0C water and ${clarity} clarity point toward a ${color.name.toLowerCase()} presentation${lowLight ? ', and the low light favors a moving bait fish can track by silhouette.' : ', with brighter/higher light pushing fish tighter to structure or deeper water.'}${pressureNote}${precipNote}${clampNote}${suspendedNote}`;
+
+    return { primaryName, alts, retrieve, color, rationale, band, lowLight, depthLabel, depthLo, depthHi };
+  }
+
+  function renderLure(){
+    const waterTempC = parseFloat(waterTempInput.value);
+    const tempC = isNaN(waterTempC) ? 18 : waterTempC;
+    const spotDepthFt = parseFloat(spotDepthInput.value);
+    const clarity = state.lureClarity;
+    const season = effectiveSeason();
+    const timeBucket = effectiveTimeBucket();
+    const cloud = effectiveCloud();
+    const precip = effectivePrecip();
+
+    const pressureTrend = effectivePressure();
+    const rec = recommendLure(tempC, season, clarity, timeBucket, cloud, precip, pressureTrend, isNaN(spotDepthFt) ? null : spotDepthFt);
+
+    const seasonLabel = season.charAt(0).toUpperCase() + season.slice(1);
+    const timeLabel = timeBucket.charAt(0).toUpperCase() + timeBucket.slice(1);
+    let skyBit = cloud === 'overcast' ? 'overcast' : cloud === 'clear' ? 'clear skies' : 'partly cloudy';
+    let precipBit = precip !== 'none' ? `, ${precip} rain` : '';
+    lureStatus.textContent = `Using ${seasonLabel.toLowerCase()}, ${timeLabel.toLowerCase()}, ${skyBit}${precipBit}, pressure ${pressureTrend}.`;
+
+    lureResult.innerHTML = `
+      <div class="lure-primary">
+        <span class="lure-tag">Primary pick</span>
+        <h3>${rec.primaryName}</h3>
+        <p class="lure-retrieve">${rec.retrieve}</p>
+      </div>
+      <div class="lure-depth">
+        <span class="lure-tag">Target depth</span>
+        <div class="lure-depth-value">${rec.depthLabel}</div>
+      </div>
+      <div class="lure-color">
+        <span class="color-swatch" style="background:${rec.color.swatch}"></span>
+        <div><strong>${rec.color.name}</strong><br><span class="lure-dim">${rec.color.examples}</span></div>
+      </div>
+      <p class="lure-rationale">${rec.rationale}</p>
+      <div class="lure-alts">
+        <span class="lure-tag">Also worth tying on</span>
+        <ul>${rec.alts.map(a=>`<li>${a}</li>`).join('')}</ul>
+      </div>
+    `;
+  }
+
+  // ================= Rendering =================
+  function statusFor(score){
+    if(score>=78) return { label:'Excellent', color:'var(--good)' };
+    if(score>=58) return { label:'Good', color:'var(--good)' };
+    if(score>=38) return { label:'Fair', color:'var(--fair)' };
+    return { label:'Poor', color:'var(--poor)' };
+  }
+
+  function render(){
+    const localMidnightMs = state.date.getTime();
+    const pTrend = effectivePressure();
+    const weatherFactors = { cloud: effectiveCloud(), precip: effectivePrecip() };
+    const day = computeDay(localMidnightMs, state.lat, state.lon, pTrend, weatherFactors, 4);
+
+    coordReadout.textContent = `${state.lat.toFixed(4)}°, ${state.lon.toFixed(4)}°`;
+
+    // ---- score card ----
+    const st = statusFor(day.peak);
+    const circumference = 195; // approx length of the arc path
+    const offset = circumference - (day.peak/100)*circumference;
+    gaugeArc.style.stroke = st.color;
+    gaugeArc.setAttribute('stroke-dashoffset', offset);
+    gaugeNum.innerHTML = day.peak + '<span>/100</span>';
+    statusPill.textContent = st.label + ' bite window';
+    statusPill.style.background = 'rgba(255,255,255,0.06)';
+    statusPill.style.color = st.color;
+    statusPill.style.border = '1px solid ' + st.color;
+
+    const reasons = [];
+    if(day.peakT){
+      const isMajor = (day.moon.maxT && Math.abs(day.peakT-day.moon.maxT.getTime())<=60*60000) || (day.moon.minT && Math.abs(day.peakT-day.moon.minT.getTime())<=60*60000);
+      const isDawnDusk = (day.sun.rise && Math.abs(day.peakT-day.sun.rise.getTime())<=45*60000) || (day.sun.set && Math.abs(day.peakT-day.sun.set.getTime())<=45*60000);
+      reasons.push(`Best window centers around ${fmtTime(day.peakT)}${isMajor ? ' — a major solunar period' : isDawnDusk ? ' — near sunrise/sunset' : ''}.`);
+    }
+    reasons.push(`${day.phase.name} (${Math.round(day.phase.illum*100)}% illuminated)${Math.abs(day.phase.illum-0.5)>0.35 ? ' adds a solunar boost.' : ' is a milder phase for activity.'}`);
+
+    const pSource = state.pressureMode === 'auto' ? (state.weather ? ' (live forecast)' : ' (default — live data unavailable)') : ' (set manually)';
+    reasons.push(`Pressure trend: ${pTrend}${pSource}${pTrend==='falling' ? ' — typically the most active feeding.' : pTrend==='rising' ? ' — often the slowest bite.' : ' — a dependable, average day.'}`);
+
+    if(weatherFactors.cloud === 'overcast') reasons.push('Overcast skies should keep fish active well beyond just dawn and dusk.');
+    else if(weatherFactors.cloud === 'clear') reasons.push('Clear, bright skies may push the bite into tighter dawn/dusk windows.');
+
+    if(weatherFactors.precip === 'light') reasons.push('Light rain in the forecast — often triggers an active, reactive bite.');
+    else if(weatherFactors.precip === 'heavy') reasons.push('Heavy rain or storms expected — worth weighing safety before fishing time.');
+
+    reasonsList.innerHTML = reasons.map(r => `<li>${r}</li>`).join('');
+
+    // ---- bite score chart ----
+    scoreChartDate.textContent = day.peakT ? state.date.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }) : '';
+    renderScoreChart(day, localMidnightMs);
+
+    // ---- timeline ----
+    timelineDate.textContent = day.peakT ? state.date.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }) : '';
+    renderTimeline(day, localMidnightMs);
+
+    // ---- outlook ----
+    renderOutlook();
+
+    // ---- lure recommender ----
+    renderLure();
+  }
+
+  function findScoreWindows(day, localMidnightMs, threshold, stepMin){
+    const pts = [];
+    for(let m=0; m<=1440; m+=stepMin){
+      const t = localMidnightMs + m*60000;
+      pts.push({ t, s: day.scoreAt(t) });
+    }
+    const windows = [];
+    let curStart = null;
+    for(let i=0;i<pts.length;i++){
+      const above = pts[i].s >= threshold;
+      if(above && curStart===null) curStart = pts[i].t;
+      if((!above || i===pts.length-1) && curStart!==null){
+        const endT = above ? pts[i].t : pts[i-1].t;
+        windows.push({ start: curStart, end: endT });
+        curStart = null;
+      }
+    }
+    // merge windows separated by a small gap
+    const gapMs = 15*60000;
+    const merged = [];
+    for(const w of windows){
+      const last = merged[merged.length-1];
+      if(last && w.start - last.end <= gapMs) last.end = w.end;
+      else merged.push({ ...w });
+    }
+    return merged;
+  }
+
+  function renderScoreChart(day, localMidnightMs){
+    const W = 480, H = 168;
+    const top = 8, chartH = 120, bottom = top + chartH;
+    const axisY = bottom + 18;
+    function xFor(mins){ return (mins/1440)*W; }
+    function yFor(score){ return top + (100-Math.max(0,Math.min(100,score)))/100*chartH; }
+
+    let svg = '';
+    svg += `<rect x="0" y="${top}" width="${W}" height="${chartH}" fill="#081A1E" rx="4"/>`;
+
+    // qualitative bands (poor / fair / good / excellent)
+    const bands = [
+      { from:0,  to:38,  color:'rgba(201,122,107,0.16)' },
+      { from:38, to:58,  color:'rgba(216,182,88,0.14)' },
+      { from:58, to:78,  color:'rgba(143,190,115,0.12)' },
+      { from:78, to:100, color:'rgba(143,190,115,0.22)' }
+    ];
+    bands.forEach(b=>{
+      const y1 = yFor(b.to), y2 = yFor(b.from);
+      svg += `<rect x="0" y="${y1.toFixed(1)}" width="${W}" height="${(y2-y1).toFixed(1)}" fill="${b.color}"/>`;
+    });
+
+    // score samples + line/area
+    const stepMin = 4;
+    const pts = [];
+    for(let m=0; m<=1440; m+=stepMin) pts.push({ m, s: day.scoreAt(localMidnightMs + m*60000) });
+    let line = '';
+    pts.forEach((p,i)=>{
+      const x = xFor(p.m).toFixed(1), y = yFor(p.s).toFixed(1);
+      line += (i===0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+    });
+    const area = line + ` L ${W} ${bottom} L 0 ${bottom} Z`;
+    svg += `<path d="${area}" fill="rgba(226,147,79,0.18)"/>`;
+    svg += `<path d="${line}" fill="none" stroke="var(--amber)" stroke-width="2.25"/>`;
+
+    // now marker
+    const now = new Date();
+    if(now.getTime()>=localMidnightMs && now.getTime() < localMidnightMs+86400000){
+      const nx = xFor((now.getTime()-localMidnightMs)/60000).toFixed(1);
+      svg += `<line x1="${nx}" y1="${top}" x2="${nx}" y2="${bottom}" stroke="var(--mist)" stroke-width="1" stroke-dasharray="2,2"/>`;
+    }
+
+    // axis ticks
+    [0,4,8,12,16,20,24].forEach(h=>{
+      const x = xFor(h*60).toFixed(1);
+      const label = h===24 ? '24' : String(h).padStart(2,'0');
+      svg += `<text x="${x}" y="${axisY}" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#6E8E8A" text-anchor="middle">${label}</text>`;
+    });
+
+    scoreSvg.innerHTML = svg;
+
+    // best windows (Good or better)
+    const windows = findScoreWindows(day, localMidnightMs, 58, 5);
+    if(!windows.length){
+      windowsList.innerHTML = `<span class="window-chip empty">No Good+ window today — best is ${fmtTime(day.peakT)} at ${day.peak}/100 (${statusFor(day.peak).label}).</span>`;
+    } else {
+      windowsList.innerHTML = windows.map(w=>{
+        const peakInWindow = Math.max(...(()=>{
+          const out=[]; for(let t=w.start;t<=w.end;t+=5*60000) out.push(day.scoreAt(t)); return out;
+        })());
+        return `<span class="window-chip">${fmtTime(new Date(w.start))} – ${fmtTime(new Date(w.end))} <span style="color:var(--mist-dim)">· ${peakInWindow}/100</span></span>`;
+      }).join('');
+    }
+  }
+
+  function renderTimeline(day, localMidnightMs){
+    const W = 480, H = 200;
+    const bandTop = 4, bandH = 22;
+    const mainTop = 36, mainH = 124;
+    const mainBottom = mainTop + mainH;
+    const axisY = mainBottom + 20;
+
+    function xFor(mins){ return (mins/1440)*W; }
+    const altMin = -15, altMax = 75;
+    function yFor(alt){
+      const a = Math.max(altMin, Math.min(altMax, alt));
+      return mainTop + (altMax - a)/(altMax-altMin)*mainH;
+    }
+
+    let svg = '';
+
+    // background
+    svg += `<rect x="0" y="0" width="${W}" height="${H}" fill="none"/>`;
+
+    // period band row (background)
+    svg += `<rect x="0" y="${bandTop}" width="${W}" height="${bandH}" rx="4" fill="#081A1E"/>`;
+    function bandRect(centerMs, halfWidthMin, fill, label){
+      if(centerMs===null || centerMs===undefined) return '';
+      const startMin = (centerMs - localMidnightMs)/60000 - halfWidthMin;
+      const endMin = startMin + halfWidthMin*2;
+      const x1 = Math.max(0, xFor(startMin));
+      const x2 = Math.min(W, xFor(endMin));
+      if(x2<=x1) return '';
+      return `<rect x="${x1.toFixed(1)}" y="${bandTop}" width="${(x2-x1).toFixed(1)}" height="${bandH}" rx="4" fill="${fill}"><title>${label}</title></rect>`;
+    }
+    svg += bandRect(day.moon.maxT && day.moon.maxT.getTime(), 60, 'rgba(226,147,79,0.55)', 'Major period — moon overhead');
+    svg += bandRect(day.moon.minT && day.moon.minT.getTime(), 60, 'rgba(226,147,79,0.55)', 'Major period — moon underfoot');
+    svg += bandRect(day.moon.rise && day.moon.rise.getTime(), 30, 'rgba(220,220,200,0.35)', 'Minor period — moonrise');
+    svg += bandRect(day.moon.set && day.moon.set.getTime(), 30, 'rgba(220,220,200,0.35)', 'Minor period — moonset');
+
+    // main chart background
+    svg += `<rect x="0" y="${mainTop}" width="${W}" height="${mainH}" fill="#081A1E" rx="4"/>`;
+
+    // moon-up shading
+    let moonPath = '';
+    let inBand = false, startX = 0;
+    for(let i=0;i<day.moonPts.length;i++){
+      const p = day.moonPts[i];
+      const up = p.alt > 0;
+      const x = xFor(p.m);
+      if(up && !inBand){ inBand = true; startX = x; }
+      if((!up || i===day.moonPts.length-1) && inBand){
+        moonPath += `<rect x="${startX.toFixed(1)}" y="${mainTop}" width="${(x-startX).toFixed(1)}" height="${mainH}" fill="rgba(220,220,200,0.10)"/>`;
+        inBand = false;
+      }
+    }
+    svg += moonPath;
+
+    // horizon line (alt = 0)
+    const horizonY = yFor(0);
+    svg += `<line x1="0" y1="${horizonY.toFixed(1)}" x2="${W}" y2="${horizonY.toFixed(1)}" stroke="#234F57" stroke-width="1" stroke-dasharray="3,3"/>`;
+
+    // sun altitude area
+    let sunLine = '', sunArea = '';
+    day.sunPts.forEach((p,i)=>{
+      const x = xFor(p.m).toFixed(1), y = yFor(p.alt).toFixed(1);
+      sunLine += (i===0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+    });
+    sunArea = sunLine + ` L ${W} ${mainBottom} L 0 ${mainBottom} Z`;
+    svg += `<path d="${sunArea}" fill="rgba(226,147,79,0.16)"/>`;
+    svg += `<path d="${sunLine}" fill="none" stroke="var(--amber)" stroke-width="2"/>`;
+
+    // now marker
+    const now = new Date();
+    if(now.getTime()>=localMidnightMs && now.getTime() < localMidnightMs+86400000){
+      const nowMin = (now.getTime()-localMidnightMs)/60000;
+      const nx = xFor(nowMin).toFixed(1);
+      svg += `<line x1="${nx}" y1="${bandTop}" x2="${nx}" y2="${mainBottom}" stroke="var(--mist)" stroke-width="1" stroke-dasharray="2,2"/>`;
+      svg += `<circle cx="${nx}" cy="${bandTop-2}" r="2.5" fill="var(--mist)"/>`;
+    }
+
+    // axis ticks
+    let axis = '';
+    [0,4,8,12,16,20,24].forEach(h=>{
+      const x = xFor(h*60).toFixed(1);
+      const label = h===24 ? '24' : String(h).padStart(2,'0');
+      axis += `<text x="${x}" y="${axisY}" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#6E8E8A" text-anchor="middle">${label}</text>`;
+    });
+    svg += axis;
+
+    // sun/moon event labels (sunrise/sunset/moonrise/moonset ticks under band)
+    function eventTick(t, glyph, color){
+      if(!t) return '';
+      const min = (t.getTime()-localMidnightMs)/60000;
+      if(min<0||min>1440) return '';
+      const x = xFor(min).toFixed(1);
+      return `<text x="${x}" y="${bandTop+bandH+12}" font-family="JetBrains Mono, monospace" font-size="9" fill="${color}" text-anchor="middle">${glyph}</text>`;
+    }
+    svg += eventTick(day.sun.rise, '↑', '#E2934F');
+    svg += eventTick(day.sun.set, '↓', '#E2934F');
+
+    tlSvg.innerHTML = svg;
+  }
+
+  function renderOutlook(){
+    outlookGrid.innerHTML = '';
+    const start = startOfLocalDay(new Date());
+    for(let i=0;i<7;i++){
+      const d = addDays(start, i);
+      const day = computeDay(d.getTime(), state.lat, state.lon, effectivePressure(), { cloud: effectiveCloud(), precip: effectivePrecip() }, 8);
+      const st = statusFor(day.peak);
+      const card = document.createElement('div');
+      card.className = 'day-card' + (sameDate(d, state.date) ? ' selected' : '');
+      card.innerHTML = `
+        <div class="dow">${d.toLocaleDateString(undefined,{weekday:'short'})}</div>
+        <div class="dnum" style="color:${st.color}">${day.peak}</div>
+        <div class="moonicon">${phaseGlyph(day.phase.name)}</div>
+      `;
+      card.title = `${d.toLocaleDateString(undefined,{month:'short', day:'numeric'})} — ${st.label} (${day.peak}/100), ${day.phase.name}`;
+      card.addEventListener('click', ()=>{
+        state.date = d;
+        dateInput.value = fmtDateInput(d);
+        render();
+        updateWeather();
+      });
+      outlookGrid.appendChild(card);
+    }
+  }
+
+  // ================= Events =================
+  searchBtn.addEventListener('click', handleSearch);
+  placeSearch.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); handleSearch(); }
+  });
+
+  latInput.addEventListener('change', ()=>{
+    const v = parseFloat(latInput.value);
+    if(!isNaN(v) && v>=-90 && v<=90){ state.lat = v; render(); updatePlaceLabel(); updateWeather(); }
+  });
+  lonInput.addEventListener('change', ()=>{
+    const v = parseFloat(lonInput.value);
+    if(!isNaN(v) && v>=-180 && v<=180){ state.lon = v; render(); updatePlaceLabel(); updateWeather(); }
+  });
+  manualToggle.addEventListener('click', ()=>{
+    const isHidden = manualCoords.hasAttribute('hidden');
+    if(isHidden){ manualCoords.removeAttribute('hidden'); manualToggle.textContent='Hide coordinates'; manualToggle.setAttribute('aria-expanded','true'); }
+    else{ manualCoords.setAttribute('hidden',''); manualToggle.textContent='Set coordinates'; manualToggle.setAttribute('aria-expanded','false'); }
+  });
+  geoBtn.addEventListener('click', ()=>{
+    if(!navigator.geolocation){
+      geoBtn.textContent = 'Not supported';
+      return;
+    }
+    geoBtn.textContent = 'Locating…';
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        state.lat = pos.coords.latitude;
+        state.lon = pos.coords.longitude;
+        latInput.value = state.lat.toFixed(4);
+        lonInput.value = state.lon.toFixed(4);
+        geoBtn.textContent = 'Use my location';
+        render();
+        updatePlaceLabel();
+        updateWeather();
+      },
+      ()=>{ geoBtn.textContent = 'Permission denied'; setTimeout(()=>geoBtn.textContent='Use my location', 2500); }
+    );
+  });
+  dateInput.addEventListener('change', ()=>{
+    const parts = dateInput.value.split('-').map(Number);
+    if(parts.length===3){
+      state.date = new Date(parts[0], parts[1]-1, parts[2]);
+      render();
+      updateWeather();
+    }
+  });
+  prevDay.addEventListener('click', ()=>{ state.date = addDays(state.date,-1); dateInput.value = fmtDateInput(state.date); render(); updateWeather(); });
+  nextDay.addEventListener('click', ()=>{ state.date = addDays(state.date,1); dateInput.value = fmtDateInput(state.date); render(); updateWeather(); });
+  todayBtn.addEventListener('click', ()=>{ state.date = startOfLocalDay(new Date()); dateInput.value = fmtDateInput(state.date); render(); updateWeather(); });
+
+  conditionControls.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pbtn');
+    if(!btn) return;
+    const group = btn.dataset.group, v = btn.dataset.v;
+    if(group === 'pressure') state.pressureMode = v;
+    else if(group === 'cloud') state.cloudMode = v;
+    else if(group === 'precip') state.precipMode = v;
+    conditionControls.querySelectorAll(`.pbtn[data-group="${group}"]`).forEach(b=>b.classList.toggle('active', b===btn));
+    render();
+  });
+  refreshWeather.addEventListener('click', updateWeather);
+
+  waterTempInput.addEventListener('change', renderLure);
+  spotDepthInput.addEventListener('change', renderLure);
+  clarityBtns.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pbtn');
+    if(!btn) return;
+    state.lureClarity = btn.dataset.v;
+    [...clarityBtns.children].forEach(b=>b.classList.toggle('active', b===btn));
+    renderLure();
+  });
+  seasonBtns.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pbtn');
+    if(!btn) return;
+    state.lureSeasonMode = btn.dataset.v;
+    [...seasonBtns.children].forEach(b=>b.classList.toggle('active', b===btn));
+    renderLure();
+  });
+  timeBtns.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.pbtn');
+    if(!btn) return;
+    state.lureTimeMode = btn.dataset.v;
+    [...timeBtns.children].forEach(b=>b.classList.toggle('active', b===btn));
+    renderLure();
+  });
+
+  render();
+  updatePlaceLabel();
+  updateWeather();
+})();
+</script>
+</body>
+</html>
