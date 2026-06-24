@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sounder — Solunar Bite Forecast</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
@@ -100,24 +102,49 @@
   .coord-readout{ font-family:'JetBrains Mono', monospace; font-size: 11.5px; color: var(--mist-dim); margin-top: 8px; }
 
   .location-field{ min-width: 220px; flex: 1 1 240px; }
-  .search-row{ display:flex; gap:6px; }
-  .search-row input[type="text"]{
-    flex: 1; min-width: 140px;
+  .location-field select{
+    width: 100%;
     background: var(--deep);
     border: 1px solid var(--water-border);
     color: var(--mist);
     font-family: 'Inter', sans-serif;
-    font-size: 13.5px;
-    padding: 8px 10px;
+    font-size: 14px;
+    padding: 9px 10px;
     border-radius: 8px;
     outline: none;
   }
-  .search-row input[type="text"]:focus{ border-color: var(--amber); }
-  .place-current{ font-size: 13.5px; color: var(--mist-dim); margin: 12px 0 0; }
+  .location-field select:focus{ border-color: var(--amber); }
+  .place-current{ font-size: 13.5px; color: var(--mist-dim); margin: 14px 0 0; }
   .place-readout{ color: var(--mist); font-weight: 600; }
-  .place-readout.loading{ color: var(--mist-dim); font-style: italic; font-weight: 400; }
-  .search-error{ font-size: 12.5px; color: var(--poor); margin: 6px 0 0; }
-  .search-error[hidden]{ display:none; }
+
+  .map-container{ margin-top: 14px; }
+  .map{
+    width: 100%; height: 240px; border-radius: var(--radius);
+    border: 1px solid var(--water-border); background: var(--deep);
+  }
+  .leaflet-container{ background: #0D272C; border-radius: var(--radius); font-family:'Inter', sans-serif; }
+  .map-fallback{ font-size: 13px; color: var(--mist-dim); padding: 16px; text-align:center; }
+  .map-fallback span{ font-family:'JetBrains Mono', monospace; color: var(--mist); }
+
+  .spot-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top: 12px; }
+  .spot-form{
+    margin-top: 12px; padding: 14px; border-radius: var(--radius);
+    border: 1px dashed var(--water-border); background: rgba(255,255,255,0.02);
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .spot-form[hidden]{ display:none; }
+  .spot-form-row{ display:flex; flex-wrap:wrap; gap:12px; }
+  .spot-form-row .field{ flex: 1 1 140px; }
+  .spot-form input{
+    width: 100%;
+    background: var(--deep); border: 1px solid var(--water-border); color: var(--mist);
+    font-family:'Inter', sans-serif; font-size: 13.5px; padding: 8px 10px; border-radius: 8px; outline:none;
+  }
+  .spot-form input:focus{ border-color: var(--amber); }
+  .spot-form-help{ font-size: 12px; color: var(--mist-dim); margin: 0; }
+  .spot-form-actions{ display:flex; flex-wrap:wrap; gap:8px; }
+  /* legacy, retained harmlessly */
+  .search-row{ display:flex; gap:6px; }
   .manual-coords{
     display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;
     margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--water-border);
@@ -239,14 +266,10 @@
 
     <div class="controls">
       <div class="field location-field">
-        <label for="placeSearch">Search a town or lake</label>
-        <div class="search-row">
-          <input type="text" id="placeSearch" placeholder="e.g. Elgin, Ontario">
-          <button class="btn small" id="searchBtn" type="button">Find</button>
-        </div>
+        <label for="spotSelect">Fishing spot</label>
+        <select id="spotSelect"></select>
       </div>
       <button class="btn" id="geoBtn" type="button">Use my location</button>
-      <button class="btn ghost small" id="manualToggle" type="button" aria-expanded="false">Set coordinates</button>
       <div class="field">
         <label for="dateInput">Date</label>
         <input type="date" id="dateInput">
@@ -257,18 +280,35 @@
         <button class="btn small ghost" id="nextDay" type="button" aria-label="Next day">›</button>
       </div>
     </div>
-    <p class="place-current">Showing forecast for <span class="place-readout loading" id="placeLabel">Locating…</span></p>
-    <p class="search-error" id="searchError" hidden></p>
-    <div class="manual-coords" id="manualCoords" hidden>
-      <div class="field">
-        <label for="lat">Latitude</label>
-        <input type="number" id="lat" step="0.0001" value="51.0501">
+
+    <p class="place-current">Showing forecast for <span class="place-readout" id="placeLabel">—</span></p>
+
+    <div id="mapContainer" class="map-container">
+      <div id="map" class="map"></div>
+      <p class="map-fallback" id="mapFallback" hidden>Map needs an internet connection to load. Coordinates: <span id="mapFallbackCoords"></span></p>
+    </div>
+
+    <div class="spot-actions">
+      <button class="btn small" id="saveSpotBtn" type="button">＋ Save current as a spot</button>
+      <button class="btn small ghost" id="manageSpotBtn" type="button">Edit / delete spots</button>
+    </div>
+
+    <div class="spot-form" id="spotForm" hidden>
+      <div class="spot-form-row">
+        <div class="field"><label for="spotName">Spot name</label><input type="text" id="spotName" placeholder="e.g. Indian Lake — north bay"></div>
       </div>
-      <div class="field">
-        <label for="lon">Longitude</label>
-        <input type="number" id="lon" step="0.0001" value="-114.0853">
+      <div class="spot-form-row">
+        <div class="field"><label for="spotLat">Latitude</label><input type="number" id="spotLat" step="0.0001" placeholder="44.5920"></div>
+        <div class="field"><label for="spotLon">Longitude</label><input type="number" id="spotLon" step="0.0001" placeholder="-76.3270"></div>
+      </div>
+      <p class="spot-form-help" id="spotFormHelp">Tip: tap the map to drop the pin where you actually fish, then save.</p>
+      <div class="spot-form-actions">
+        <button class="btn small" id="spotSaveBtn" type="button">Save spot</button>
+        <button class="btn small ghost" id="spotDeleteBtn" type="button" hidden>Delete</button>
+        <button class="btn small ghost" id="spotCancelBtn" type="button">Cancel</button>
       </div>
     </div>
+
     <p class="coord-readout" id="coordReadout"></p>
   </div>
 
@@ -532,8 +572,8 @@
 
   // ================= State =================
   const state = {
-    lat: 51.0501,
-    lon: -114.0853,
+    lat: 44.610,
+    lon: -76.218,
     date: startOfLocalDay(new Date()),
     pressureMode: 'auto',
     cloudMode: 'auto',
@@ -542,8 +582,36 @@
     weatherStatusText: 'Checking live forecast…',
     lureClarity: 'stained',
     lureSeasonMode: 'auto',
-    lureTimeMode: 'auto'
+    lureTimeMode: 'auto',
+    spots: [],
+    activeSpotId: null,
+    editingSpotId: null
   };
+
+  // Starter spots (eastern Ontario / Rideau Lakes). Users can edit/delete/add.
+  const DEFAULT_SPOTS = [
+    { id: 'seed-elgin',   name: 'Elgin, Ontario',        lat: 44.610, lon: -76.218 },
+    { id: 'seed-indian',  name: 'Indian Lake, Ontario',  lat: 44.592, lon: -76.327 },
+    { id: 'seed-clear',   name: 'Clear Lake, Ontario',   lat: 44.612, lon: -76.300 },
+    { id: 'seed-westport',name: 'Westport, Ontario',     lat: 44.678, lon: -76.394 }
+  ];
+  const SPOTS_KEY = 'sounder.spots.v1';
+  const ACTIVE_KEY = 'sounder.activeSpot.v1';
+
+  function loadSpots(){
+    try{
+      const raw = localStorage.getItem(SPOTS_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(Array.isArray(parsed)) return parsed;
+      }
+    }catch(e){}
+    return DEFAULT_SPOTS.slice();
+  }
+  function saveSpots(){
+    try{ localStorage.setItem(SPOTS_KEY, JSON.stringify(state.spots)); }catch(e){}
+    try{ if(state.activeSpotId) localStorage.setItem(ACTIVE_KEY, state.activeSpotId); }catch(e){}
+  }
 
   function effectivePressure(){
     if(state.pressureMode !== 'auto') return state.pressureMode;
@@ -601,15 +669,18 @@
   }
 
   // ================= DOM refs =================
-  const latInput = document.getElementById('lat');
-  const lonInput = document.getElementById('lon');
+  const spotSelect = document.getElementById('spotSelect');
   const geoBtn = document.getElementById('geoBtn');
-  const manualToggle = document.getElementById('manualToggle');
-  const manualCoords = document.getElementById('manualCoords');
   const placeLabel = document.getElementById('placeLabel');
-  const placeSearch = document.getElementById('placeSearch');
-  const searchBtn = document.getElementById('searchBtn');
-  const searchError = document.getElementById('searchError');
+  const saveSpotBtn = document.getElementById('saveSpotBtn');
+  const manageSpotBtn = document.getElementById('manageSpotBtn');
+  const spotName = document.getElementById('spotName');
+  const spotLat = document.getElementById('spotLat');
+  const spotLon = document.getElementById('spotLon');
+  const spotFormHelp = document.getElementById('spotFormHelp');
+  const spotSaveBtn = document.getElementById('spotSaveBtn');
+  const spotDeleteBtn = document.getElementById('spotDeleteBtn');
+  const spotCancelBtn = document.getElementById('spotCancelBtn');
   const dateInput = document.getElementById('dateInput');
   const prevDay = document.getElementById('prevDay');
   const nextDay = document.getElementById('nextDay');
@@ -638,206 +709,177 @@
 
   dateInput.value = fmtDateInput(state.date);
 
-  // ================= Geocoding & weather =================
-  // Two different environments can run this file, with opposite network
-  // restrictions: inside Claude.ai's artifact sandbox, only api.anthropic.com
-  // is reachable; opened as a standalone downloaded file in a normal browser,
-  // general internet requests work but api.anthropic.com calls fail (no key).
-  // So every lookup below tries a free, no-key public API first, and falls
-  // back to asking Claude (with web search, for weather) if that's blocked.
+  // ================= Spots, map & weather =================
+  // Location is chosen from saved spots, "use my location", or by dropping a
+  // pin on the map. Spots persist in localStorage. Weather still uses a free
+  // public API first (works when hosted), with a Claude fallback.
 
-  function extractJSON(text){
-    if(!text) return null;
-    const cleaned = text.replace(/```json|```/g, '').trim();
-    try{ return JSON.parse(cleaned); } catch(e){}
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if(start !== -1 && end !== -1 && end > start){
-      try{ return JSON.parse(cleaned.slice(start, end+1)); } catch(e){}
+  let map = null, mapMarker = null, mapReady = false;
+
+  function initMap(){
+    if(typeof L === 'undefined'){
+      // Leaflet didn't load (offline / blocked) — show coordinate fallback.
+      document.getElementById('map').hidden = true;
+      const fb = document.getElementById('mapFallback');
+      fb.hidden = false;
+      return;
     }
-    return null;
-  }
-
-  async function askClaudeJSON(prompt, useWebSearch){
-    const body = {
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }]
-    };
-    if(useWebSearch) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
-
-    let response;
     try{
-      response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+      map = L.map('map', { zoomControl: true, attributionControl: false }).setView([state.lat, state.lon], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+      }).addTo(map);
+      mapMarker = L.marker([state.lat, state.lon], { draggable: true }).addTo(map);
+      mapMarker.on('dragend', ()=>{
+        const ll = mapMarker.getLatLng();
+        setLocation(ll.lat, ll.lng, null);
+        // if the spot form is open, mirror the dragged position into its fields
+        if(!document.getElementById('spotForm').hasAttribute('hidden')){
+          spotLat.value = ll.lat.toFixed(4);
+          spotLon.value = ll.lng.toFixed(4);
+        }
       });
-    } catch(e){
-      throw new Error('fetch failed: ' + (e && e.message ? e.message : e));
+      map.on('click', (e)=>{
+        // Tapping the map drops the pin (useful for fine-tuning a spot).
+        mapMarker.setLatLng(e.latlng);
+        setLocation(e.latlng.lat, e.latlng.lng, null);
+        if(!document.getElementById('spotForm').hasAttribute('hidden')){
+          spotLat.value = e.latlng.lat.toFixed(4);
+          spotLon.value = e.latlng.lng.toFixed(4);
+        }
+      });
+      mapReady = true;
+      // Leaflet sometimes needs a nudge to size correctly inside flex layouts.
+      setTimeout(()=>{ if(map) map.invalidateSize(); }, 200);
+    }catch(err){
+      document.getElementById('map').hidden = true;
+      document.getElementById('mapFallback').hidden = false;
     }
-
-    let raw;
-    try{
-      raw = await response.text();
-    } catch(e){
-      throw new Error('could not read response body (status ' + response.status + ')');
-    }
-
-    if(!response.ok){
-      throw new Error('API status ' + response.status + ': ' + raw.slice(0, 160));
-    }
-
-    let data;
-    try{
-      data = JSON.parse(raw);
-    } catch(e){
-      throw new Error('response was not JSON: ' + raw.slice(0, 160));
-    }
-
-    if(!data || !Array.isArray(data.content)){
-      throw new Error('unexpected response shape: ' + JSON.stringify(data).slice(0, 160));
-    }
-
-    const textBlocks = data.content.filter(b=>b && b.type==='text').map(b=>b.text);
-    if(!textBlocks.length){
-      const types = data.content.map(b=>b && b.type).join(',');
-      throw new Error('no text content in response (block types: ' + types + ')');
-    }
-    const lastText = textBlocks[textBlocks.length-1] || '';
-    const parsed = extractJSON(lastText) || extractJSON(textBlocks.join('\n'));
-    if(!parsed){
-      throw new Error('could not extract JSON from reply: ' + lastText.slice(0, 160));
-    }
-    return parsed;
   }
 
-  // ---- forward geocoding (place search) ----
-  async function searchPlaceDirect(query){
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query.split(',')[0].trim())}&count=10&language=en&format=json`;
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('geocoding API request failed: ' + res.status);
-    const data = await res.json();
-    const results = data.results || [];
-    if(!results.length) return null;
-    const hints = query.split(',').slice(1).map(h=>h.trim().toLowerCase()).filter(Boolean);
-    function score(r){
-      let s = 0;
-      const admin1 = (r.admin1||'').toLowerCase(), country = (r.country||'').toLowerCase();
-      for(const h of hints){
-        if(admin1 && (admin1.includes(h) || h.includes(admin1))) s += 3;
-        if(country && (country.includes(h) || h.includes(country))) s += 3;
-        if((r.country_code||'').toLowerCase() === h) s += 3;
+  function updateMap(){
+    if(mapReady && map && mapMarker){
+      mapMarker.setLatLng([state.lat, state.lon]);
+      map.panTo([state.lat, state.lon]);
+    } else {
+      const el = document.getElementById('mapFallbackCoords');
+      if(el) el.textContent = `${state.lat.toFixed(4)}°, ${state.lon.toFixed(4)}°`;
+    }
+  }
+
+  function setLocation(lat, lon, label){
+    state.lat = lat;
+    state.lon = lon;
+    if(label !== undefined && label !== null){
+      placeLabel.textContent = `📍 ${label}`;
+    } else {
+      placeLabel.textContent = `📍 ${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+    }
+    coordReadout.textContent = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+    updateMap();
+  }
+
+  function activeSpot(){
+    return state.spots.find(s => s.id === state.activeSpotId) || null;
+  }
+
+  function renderSpotOptions(){
+    spotSelect.innerHTML = '';
+    state.spots.forEach(s=>{
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      if(s.id === state.activeSpotId) opt.selected = true;
+      spotSelect.appendChild(opt);
+    });
+    const custom = document.createElement('option');
+    custom.value = '__custom__';
+    custom.textContent = 'Custom pin / my location';
+    if(!state.activeSpotId) custom.selected = true;
+    spotSelect.appendChild(custom);
+  }
+
+  function selectSpot(id){
+    const spot = state.spots.find(s => s.id === id);
+    if(!spot) return;
+    state.activeSpotId = id;
+    saveSpots();
+    setLocation(spot.lat, spot.lon, spot.name);
+    renderSpotOptions();
+    render();
+    updateWeather();
+  }
+
+  function genId(){ return 'spot-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+  // ---- spot add/edit form ----
+  function openSpotForm(mode){
+    const form = document.getElementById('spotForm');
+    form.removeAttribute('hidden');
+    if(mode === 'edit'){
+      const s = activeSpot();
+      if(!s){ // nothing to edit (on a custom pin) → treat as new save
+        openSpotForm('new');
+        return;
       }
-      s += Math.log10((r.population||1)+1) * 0.3;
-      return s;
+      state.editingSpotId = s.id;
+      spotName.value = s.name;
+      spotLat.value = s.lat.toFixed(4);
+      spotLon.value = s.lon.toFixed(4);
+      spotDeleteBtn.removeAttribute('hidden');
+      spotFormHelp.textContent = 'Edit this spot, drag the map pin to adjust, then save.';
+    } else {
+      state.editingSpotId = null;
+      spotName.value = '';
+      spotLat.value = state.lat.toFixed(4);
+      spotLon.value = state.lon.toFixed(4);
+      spotDeleteBtn.setAttribute('hidden','');
+      spotFormHelp.textContent = 'Name this spot. The current map pin is filled in — drag it or tap the map to adjust.';
     }
-    results.sort((a,b)=>score(b)-score(a));
-    const best = results[0];
-    const labelParts = [best.name, best.admin1].filter(Boolean);
-    let label = labelParts.join(', ');
-    if(best.country) label += ` · ${best.country}`;
-    return { lat: best.latitude, lon: best.longitude, label };
+    spotName.focus();
   }
-  async function searchPlaceViaClaude(query){
-    const prompt = `You are a geocoding lookup. Given this place description: "${query}"
-Identify the single most likely real-world town, city, or named lake it refers to. If a region, province, state, or country is included, treat it as a strong disambiguating hint and prefer a match there over a same-named place elsewhere.
-Respond with ONLY a JSON object and nothing else, no markdown fences, no explanation:
-{"found": true, "name": "<short place name>", "admin1": "<state or province, or empty string>", "country": "<country name>", "lat": <decimal latitude as a number>, "lon": <decimal longitude as a number>}
-If you cannot confidently identify a specific real place, respond with exactly:
-{"found": false}`;
-    const result = await askClaudeJSON(prompt, false);
-    if(!result || result.found === false) return null;
-    if(typeof result.lat !== 'number' || typeof result.lon !== 'number') return null;
-    const labelParts = [result.name, result.admin1].filter(Boolean);
-    let label = labelParts.join(', ');
-    if(result.country) label += ` · ${result.country}`;
-    return { lat: result.lat, lon: result.lon, label };
+  function closeSpotForm(){
+    document.getElementById('spotForm').setAttribute('hidden','');
+    state.editingSpotId = null;
   }
-  async function searchPlace(query){
-    try{
-      const direct = await searchPlaceDirect(query);
-      if(direct) return direct;
-    } catch(e){ /* blocked or unreachable — fall through */ }
-    return await searchPlaceViaClaude(query); // let failures here propagate with their real reason
-  }
-
-  async function handleSearch(){
-    const query = placeSearch.value.trim();
-    if(!query) return;
-    searchBtn.disabled = true;
-    searchBtn.textContent = 'Searching…';
-    searchError.setAttribute('hidden','');
-    try{
-      const result = await searchPlace(query);
-      if(!result){
-        searchError.textContent = `No location found for "${query}". Try a nearby town, or use Set coordinates.`;
-        searchError.removeAttribute('hidden');
-      } else {
-        geocodeSeq++; // invalidate any in-flight reverse-geocode lookup
-        state.lat = result.lat;
-        state.lon = result.lon;
-        latInput.value = state.lat.toFixed(4);
-        lonInput.value = state.lon.toFixed(4);
-        placeLabel.classList.remove('loading');
-        placeLabel.textContent = `📍 ${result.label}`;
-        placeSearch.value = result.label;
-        render();
-        updateWeather();
-      }
-    } catch(err){
-      searchError.innerHTML = `Couldn't reach live search right now (${err && err.message ? err.message : 'unknown error'}). Try again in a moment, or use <strong>Set coordinates</strong> below.`;
-      searchError.removeAttribute('hidden');
-      manualCoords.removeAttribute('hidden');
-      manualToggle.textContent = 'Hide coordinates';
-      manualToggle.setAttribute('aria-expanded','true');
-    } finally{
-      searchBtn.disabled = false;
-      searchBtn.textContent = 'Find';
+  function commitSpot(){
+    const name = spotName.value.trim();
+    const lat = parseFloat(spotLat.value);
+    const lon = parseFloat(spotLon.value);
+    if(!name){ spotName.focus(); return; }
+    if(isNaN(lat) || lat < -90 || lat > 90 || isNaN(lon) || lon < -180 || lon > 180){
+      spotFormHelp.textContent = 'Please enter valid coordinates (lat -90..90, lon -180..180).';
+      return;
     }
-  }
-
-  // ---- reverse geocoding (nearest town to coordinates) ----
-  let geocodeSeq = 0;
-  async function reverseGeocodeDirect(lat, lon){
-    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
-    if(!res.ok) throw new Error('reverse geocode request failed: ' + res.status);
-    const data = await res.json();
-    const city = data.city || data.locality;
-    const region = data.principalSubdivision;
-    const parts = [city, region].filter(Boolean);
-    if(parts.length) return parts.join(', ');
-    return data.countryName || null;
-  }
-  async function reverseGeocodeViaClaude(lat, lon){
-    const prompt = `What is the nearest town or city to latitude ${lat.toFixed(4)}, longitude ${lon.toFixed(4)}?
-Respond with ONLY a JSON object and nothing else, no markdown fences, no explanation:
-{"name": "<nearest town or city name>", "admin1": "<state or province, or empty string>", "country": "<country name>"}`;
-    const result = await askClaudeJSON(prompt, false);
-    if(!result || !result.name) return null;
-    const parts = [result.name, result.admin1].filter(Boolean);
-    if(parts.length) return parts.join(', ');
-    return result.country || null;
-  }
-  async function lookupPlaceName(lat, lon){
-    try{
-      const name = await reverseGeocodeDirect(lat, lon);
-      if(name) return name;
-    } catch(e){ /* blocked or unreachable — fall through */ }
-    try{
-      return await reverseGeocodeViaClaude(lat, lon);
-    } catch(e){
-      return null;
+    if(state.editingSpotId){
+      const s = state.spots.find(x => x.id === state.editingSpotId);
+      if(s){ s.name = name; s.lat = lat; s.lon = lon; }
+      state.activeSpotId = state.editingSpotId;
+    } else {
+      const id = genId();
+      state.spots.push({ id, name, lat, lon });
+      state.activeSpotId = id;
     }
+    saveSpots();
+    renderSpotOptions();
+    setLocation(lat, lon, name);
+    closeSpotForm();
+    render();
+    updateWeather();
   }
-  async function updatePlaceLabel(){
-    const seq = ++geocodeSeq;
-    placeLabel.textContent = 'Locating…';
-    placeLabel.classList.add('loading');
-    const name = await lookupPlaceName(state.lat, state.lon);
-    if(seq !== geocodeSeq) return; // a newer lookup superseded this one
-    placeLabel.classList.remove('loading');
-    placeLabel.textContent = name ? `📍 ${name}` : `📍 ${state.lat.toFixed(3)}°, ${state.lon.toFixed(3)}°`;
+  function deleteActiveSpot(){
+    if(!state.editingSpotId) return;
+    state.spots = state.spots.filter(s => s.id !== state.editingSpotId);
+    if(state.activeSpotId === state.editingSpotId){
+      state.activeSpotId = state.spots.length ? state.spots[0].id : null;
+    }
+    saveSpots();
+    renderSpotOptions();
+    closeSpotForm();
+    const s = activeSpot();
+    if(s) setLocation(s.lat, s.lon, s.name);
+    render();
+    updateWeather();
   }
 
   // ---- weather ----
@@ -863,29 +905,12 @@ Respond with ONLY a JSON object and nothing else, no markdown fences, no explana
     const summary = `${cloudLabel} skies, pressure ~${pressureHpa} hPa and ${pressureTrend}${precip!=='none' ? `, ${precip} rain expected` : ''}.`;
     return { found: true, pressureTrend, pressureHpa, cloud, precip, tempC: null, summary };
   }
-  async function fetchWeatherViaClaude(lat, lon, date){
-    const dateStr = date.toLocaleDateString(undefined, { year:'numeric', month:'long', day:'numeric' });
-    const prompt = `Search the web for the weather forecast for latitude ${lat.toFixed(3)}, longitude ${lon.toFixed(3)} on ${dateStr}.
-I need three things for that day: the barometric pressure trend (is it generally falling, steady, or rising through the day), the expected cloud cover, and expected precipitation.
-After researching, respond with ONLY a final JSON object and nothing else, no markdown fences, no other commentary, in exactly this format:
-{"found": true, "pressureTrend": "falling", "pressureHpa": 1013, "cloud": "partly_cloudy", "precip": "none", "tempC": 18, "summary": "<one short plain sentence describing conditions>"}
-Use only these allowed values: pressureTrend must be "falling", "steady", or "rising". cloud must be "clear", "partly_cloudy", or "overcast". precip must be "none", "light", or "heavy".
-If you cannot find reliable weather data for that date and location, respond with exactly:
-{"found": false}`;
-    const result = await askClaudeJSON(prompt, true);
-    if(!result || result.found === false) return null;
-    return result;
-  }
   async function fetchWeather(lat, lon, date){
     try{
       const direct = await fetchWeatherDirect(lat, lon, date);
       if(direct) return direct;
-    } catch(e){ /* blocked, unreachable, or date out of range — fall through */ }
-    try{
-      return await fetchWeatherViaClaude(lat, lon, date);
-    } catch(e){
-      return null;
-    }
+    } catch(e){ /* blocked, unreachable, or date out of range */ }
+    return null;
   }
 
   let weatherSeq = 0;
@@ -1443,24 +1468,32 @@ If you cannot find reliable weather data for that date and location, respond wit
   }
 
   // ================= Events =================
-  searchBtn.addEventListener('click', handleSearch);
-  placeSearch.addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter'){ e.preventDefault(); handleSearch(); }
+  spotSelect.addEventListener('change', ()=>{
+    const v = spotSelect.value;
+    if(v === '__custom__'){
+      state.activeSpotId = null;
+      saveSpots();
+      placeLabel.textContent = `📍 ${state.lat.toFixed(4)}°, ${state.lon.toFixed(4)}°`;
+    } else {
+      selectSpot(v);
+    }
   });
 
-  latInput.addEventListener('change', ()=>{
-    const v = parseFloat(latInput.value);
-    if(!isNaN(v) && v>=-90 && v<=90){ state.lat = v; render(); updatePlaceLabel(); updateWeather(); }
-  });
-  lonInput.addEventListener('change', ()=>{
-    const v = parseFloat(lonInput.value);
-    if(!isNaN(v) && v>=-180 && v<=180){ state.lon = v; render(); updatePlaceLabel(); updateWeather(); }
-  });
-  manualToggle.addEventListener('click', ()=>{
-    const isHidden = manualCoords.hasAttribute('hidden');
-    if(isHidden){ manualCoords.removeAttribute('hidden'); manualToggle.textContent='Hide coordinates'; manualToggle.setAttribute('aria-expanded','true'); }
-    else{ manualCoords.setAttribute('hidden',''); manualToggle.textContent='Set coordinates'; manualToggle.setAttribute('aria-expanded','false'); }
-  });
+  saveSpotBtn.addEventListener('click', ()=> openSpotForm('new'));
+  manageSpotBtn.addEventListener('click', ()=> openSpotForm('edit'));
+  spotSaveBtn.addEventListener('click', commitSpot);
+  spotDeleteBtn.addEventListener('click', deleteActiveSpot);
+  spotCancelBtn.addEventListener('click', closeSpotForm);
+  // live-preview the pin as coords are typed into the form
+  function syncFormToMap(){
+    const la = parseFloat(spotLat.value), lo = parseFloat(spotLon.value);
+    if(!isNaN(la) && !isNaN(lo) && la>=-90 && la<=90 && lo>=-180 && lo<=180){
+      setLocation(la, lo, spotName.value.trim() || null);
+    }
+  }
+  spotLat.addEventListener('change', syncFormToMap);
+  spotLon.addEventListener('change', syncFormToMap);
+
   geoBtn.addEventListener('click', ()=>{
     if(!navigator.geolocation){
       geoBtn.textContent = 'Not supported';
@@ -1469,18 +1502,17 @@ If you cannot find reliable weather data for that date and location, respond wit
     geoBtn.textContent = 'Locating…';
     navigator.geolocation.getCurrentPosition(
       pos=>{
-        state.lat = pos.coords.latitude;
-        state.lon = pos.coords.longitude;
-        latInput.value = state.lat.toFixed(4);
-        lonInput.value = state.lon.toFixed(4);
+        state.activeSpotId = null;
+        renderSpotOptions();
+        setLocation(pos.coords.latitude, pos.coords.longitude, 'My location');
         geoBtn.textContent = 'Use my location';
         render();
-        updatePlaceLabel();
         updateWeather();
       },
       ()=>{ geoBtn.textContent = 'Permission denied'; setTimeout(()=>geoBtn.textContent='Use my location', 2500); }
     );
   });
+
   dateInput.addEventListener('change', ()=>{
     const parts = dateInput.value.split('-').map(Number);
     if(parts.length===3){
@@ -1529,8 +1561,24 @@ If you cannot find reliable weather data for that date and location, respond wit
     renderLure();
   });
 
+  // ================= Init =================
+  state.spots = loadSpots();
+  let savedActive = null;
+  try{ savedActive = localStorage.getItem(ACTIVE_KEY); }catch(e){}
+  const startSpot = state.spots.find(s => s.id === savedActive) || state.spots[0] || null;
+  if(startSpot){
+    state.activeSpotId = startSpot.id;
+    state.lat = startSpot.lat;
+    state.lon = startSpot.lon;
+  }
+  renderSpotOptions();
+  initMap();
+  if(startSpot){
+    setLocation(startSpot.lat, startSpot.lon, startSpot.name);
+  } else {
+    setLocation(state.lat, state.lon, null);
+  }
   render();
-  updatePlaceLabel();
   updateWeather();
 })();
 </script>
