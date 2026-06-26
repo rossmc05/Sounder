@@ -260,16 +260,15 @@
   async function fetchFlow(){
     // Request newest-first so the most recent reading is at the top. Without an
     // explicit sort the API returns the OLDEST rows of the 30-day window first,
-    // which yields a stale value.
+    // which yields a stale value. Pull enough rows to reach ~24h+ back (the Bow
+    // reports roughly every 5 min, so 400 rows ≈ 33 h of history).
     const base = 'https://api.weather.gc.ca/collections/hydrometric-realtime/items';
-    const url = `${base}?STATION_NUMBER=${STATION}&sortby=-DATETIME&limit=100&f=json`;
+    const url = `${base}?STATION_NUMBER=${STATION}&sortby=-DATETIME&limit=400&f=json`;
     const res = await fetch(url);
     if(!res.ok) throw new Error('flow API ' + res.status);
     const data = await res.json();
     const feats = (data && data.features) || [];
     if(!feats.length) throw new Error('no flow features');
-    // Rows arrive newest-first; normalise and sort defensively (newest last) so
-    // our slice logic is unambiguous regardless of what the server returned.
     const rows = feats.map(f => f.properties || {}).filter(p => p.DATETIME);
     rows.sort((a,b)=> new Date(a.DATETIME) - new Date(b.DATETIME)); // oldest -> newest
     const withFlow = rows.filter(r => r.DISCHARGE != null && !isNaN(parseFloat(r.DISCHARGE)));
@@ -279,6 +278,36 @@
     const latestFlow = latestFlowRow ? parseFloat(latestFlowRow.DISCHARGE) : null;
     const latestLevel = latestLevelRow ? parseFloat(latestLevelRow.LEVEL) : null;
     const asOf = latestFlowRow ? latestFlowRow.DATETIME : (latestLevelRow ? latestLevelRow.DATETIME : null);
+
+    // Find the reading nearest to 24h before the latest, for a day-over-day delta.
+    function valueAround24hAgo(series, field){
+      if(!series.length) return null;
+      const latestT = new Date(series[series.length-1].DATETIME).getTime();
+      const targetT = latestT - 24*3600000;
+      let best = null, bestGap = Infinity;
+      for(const r of series){
+        const t = new Date(r.DATETIME).getTime();
+        const gap = Math.abs(t - targetT);
+        if(gap < bestGap){ bestGap = gap; best = r; }
+      }
+      // Only trust it if we actually have a reading within 3h of the 24h mark
+      if(best && bestGap <= 3*3600000) return parseFloat(best[field]);
+      return null;
+    }
+    const flowYesterday = valueAround24hAgo(withFlow, 'DISCHARGE');
+    const levelYesterday = valueAround24hAgo(withLevel, 'LEVEL');
+
+    function dayChange(now, then){
+      if(now == null || then == null) return { dir:'unknown', delta:null, pct:null };
+      const delta = now - then;
+      const pct = then !== 0 ? delta/Math.abs(then) : 0;
+      const dir = pct > 0.02 ? 'rising' : pct < -0.02 ? 'falling' : 'steady';
+      return { dir, delta, pct };
+    }
+    const flowDay = dayChange(latestFlow, flowYesterday);
+    const levelDay = dayChange(latestLevel, levelYesterday);
+
+    // Short-term trend (last ~30 min) kept for the quick arrow.
     let trend = 'steady';
     if(withFlow.length >= 6){
       const recent = withFlow.slice(-6).map(r=>parseFloat(r.DISCHARGE));
@@ -286,7 +315,7 @@
       const pct = delta / Math.max(1, recent[0]);
       trend = pct > 0.05 ? 'rising' : pct < -0.05 ? 'falling' : 'steady';
     }
-    return { discharge: latestFlow, level: latestLevel, trend, asOf };
+    return { discharge: latestFlow, level: latestLevel, trend, asOf, flowDay, levelDay };
   }
 
 
@@ -449,6 +478,11 @@
     const reasons = [];
     if(day.peakT) reasons.push(`Best window around ${fmtTime(day.peakT)}.`);
     reasons.push(`Flow: ${day.flow.label}. ${day.flow.note}`);
+    if(state.flow && state.flow.flowDay && state.flow.flowDay.dir === 'rising' && state.flow.flowDay.pct > 0.08){
+      reasons.push('Flow is up notably since yesterday — rising water can colour up and unsettle fish; watch clarity and fish the edges.');
+    } else if(state.flow && state.flow.flowDay && state.flow.flowDay.dir === 'falling' && state.flow.flowDay.pct < -0.08){
+      reasons.push('Flow is dropping since yesterday — a falling, clearing river often fishes well as it settles.');
+    }
     reasons.push(`Water temp: ${day.temp.band}${day.wTemp!=null?` (~${Math.round(day.wTemp)} °C)`:''}. ${day.temp.note}`);
     const skyWord = day.cloud==='overcast'?'Overcast skies favour a longer bite.':day.cloud==='clear'?'Bright sun — focus on low light and shade.':'Mixed cloud.';
     reasons.push(skyWord);
@@ -463,6 +497,16 @@
     renderScoreChart(day, mid);
   }
 
+  function dayDeltaLine(change, unit, decimals){
+    if(!change || change.dir === 'unknown' || change.delta == null) return '';
+    const cls = change.dir==='rising'?'trend-up':change.dir==='falling'?'trend-down':'trend-steady';
+    const arrow = change.dir==='rising'?'▲':change.dir==='falling'?'▼':'–';
+    const sign = change.delta > 0 ? '+' : '';
+    const mag = Math.abs(change.delta).toFixed(decimals);
+    const word = change.dir==='steady' ? 'flat vs yesterday' : `${change.dir} vs yesterday`;
+    return `<div class="stat-sub ${cls}">${arrow} ${word} (${sign}${change.delta.toFixed(decimals)} ${unit})</div>`;
+  }
+
   function renderStats(day){
     const cards = [];
     const f = state.flow;
@@ -473,12 +517,12 @@
       if(f.asOf){
         try{ asOfStr = new Date(f.asOf).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){}
       }
-      cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">${f.discharge.toFixed(0)}<small> m³/s</small></div><div class="stat-sub ${tcls}">${tword}</div><div class="stat-status" style="color:${statusFor(day.peak).color}">${day.flow.label}</div>${asOfStr?`<div class="stat-sub trend-steady">as of ${asOfStr}</div>`:''}</div>`);
+      cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">${f.discharge.toFixed(0)}<small> m³/s</small></div><div class="stat-sub ${tcls}">${tword} (last hr)</div>${dayDeltaLine(f.flowDay, 'm³/s', 0)}<div class="stat-status" style="color:${statusFor(day.peak).color}">${day.flow.label}</div>${asOfStr?`<div class="stat-sub trend-steady">as of ${asOfStr}</div>`:''}</div>`);
     } else {
       cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">—</div><div class="stat-sub trend-steady">gauge unavailable</div></div>`);
     }
     if(f && f.level != null){
-      cards.push(`<div class="stat-card"><div class="stat-label">Water level</div><div class="stat-value">${f.level.toFixed(2)}<small> m</small></div></div>`);
+      cards.push(`<div class="stat-card"><div class="stat-label">Water level</div><div class="stat-value">${f.level.toFixed(2)}<small> m</small></div>${dayDeltaLine(f.levelDay, 'm', 2)}</div>`);
     }
     const wt = effectiveWaterTemp();
     const tband = tempAssessment(wt);
