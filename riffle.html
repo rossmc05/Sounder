@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Riffle — Bow River Trout Conditions</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --deep: #0B1614;
+    --water: #122A26;
+    --water-light: #1C403A;
+    --water-border: #244E47;
+    --mist: #D2E6DF;
+    --mist-dim: #74948C;
+    --moss: #8FBE73;
+    --gold: #E0B84F;
+    --rust: #C97A6B;
+    --sky: #6FA8C7;
+    --radius: 14px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: radial-gradient(ellipse 1200px 800px at 50% -10%, #16332D 0%, var(--deep) 55%);
+    color: var(--mist);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 28px 16px 60px;
+  }
+  .app{ max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .panel{
+    background: linear-gradient(180deg, var(--water) 0%, #0E211D 100%);
+    border: 1px solid var(--water-border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+  }
+  .eyebrow{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--moss); margin: 0 0 6px;
+  }
+  h1{
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 30px;
+    margin: 0 0 2px; color: var(--mist); letter-spacing: -0.01em;
+  }
+  .sub{ color: var(--mist-dim); font-size: 13.5px; margin: 0 0 18px; }
+
+  .controls{ display:flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .field{ display:flex; flex-direction:column; gap:5px; }
+  .field label{ font-family:'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing:0.08em; text-transform:uppercase; color: var(--mist-dim); }
+  .field input[type="number"], .field input[type="date"]{
+    background: var(--deep); border: 1px solid var(--water-border); color: var(--mist);
+    font-family:'JetBrains Mono', monospace; font-size: 13px; padding: 8px 10px; border-radius: 8px; width: 120px; outline: none;
+  }
+  .field input:focus{ border-color: var(--gold); }
+  .btn{
+    font-family:'Inter', sans-serif; font-size: 13px; font-weight: 600; border-radius: 8px;
+    border: 1px solid var(--water-border); background: var(--water-light); color: var(--mist);
+    padding: 9px 14px; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .btn:hover{ border-color: var(--gold); }
+  .btn.small{ padding: 7px 10px; font-size: 12px; }
+  .btn.ghost{ background: transparent; }
+  .date-nav{ display:flex; align-items:center; gap:8px; }
+
+  /* score */
+  .score-row{ display:flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .gauge-wrap{ position:relative; width:148px; height:96px; flex-shrink:0; }
+  .gauge-num{ position:absolute; bottom:0; left:0; width:100%; text-align:center; font-family:'Space Grotesk', sans-serif; font-weight:700; font-size: 34px; color: var(--mist); }
+  .gauge-num span{ font-size: 14px; color: var(--mist-dim); font-weight:500; margin-left:2px; }
+  .score-info{ flex: 1; min-width: 220px; }
+  .status-pill{ display:inline-block; font-family:'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; border-radius: 20px; margin-bottom: 8px; }
+  .reasons{ list-style:none; margin: 4px 0 0; padding:0; display:flex; flex-direction:column; gap:5px; }
+  .reasons li{ font-size: 13px; color: var(--mist); display:flex; gap:8px; }
+  .reasons li::before{ content:"›"; color: var(--moss); font-weight:700; }
+
+  /* stat cards */
+  .stat-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .stat-card{ background: var(--deep); border:1px solid var(--water-border); border-radius: 10px; padding: 12px 14px; }
+  .stat-label{ font-family:'JetBrains Mono', monospace; font-size: 10px; letter-spacing:0.08em; text-transform:uppercase; color: var(--mist-dim); }
+  .stat-value{ font-family:'Space Grotesk', sans-serif; font-size: 22px; font-weight:700; color: var(--mist); margin-top: 4px; }
+  .stat-value small{ font-size: 12px; color: var(--mist-dim); font-weight:500; }
+  .stat-sub{ font-size: 12px; margin-top:2px; }
+  .trend-up{ color: var(--rust); }
+  .trend-down{ color: var(--sky); }
+  .trend-steady{ color: var(--mist-dim); }
+  .stat-status{ font-size: 12px; margin-top: 4px; font-weight:600; }
+
+  .section-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom: 12px; }
+  .section-head h2{ font-family:'Space Grotesk', sans-serif; font-size: 15px; margin:0; color: var(--mist); }
+  .live-status{ font-size: 12px; color: var(--mist-dim); margin: 0 0 14px; }
+  .live-status.pending{ font-style: italic; }
+
+  .override-row{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--water-border); }
+  .override-help{ font-size: 12px; color: var(--mist-dim); flex:1; min-width:180px; }
+
+  /* timeline */
+  svg.tl{ width: 100%; height: auto; display:block; }
+  .legend{ display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; }
+  .legend-item{ display:flex; align-items:center; gap:6px; font-size:11.5px; color: var(--mist-dim); }
+  .legend-dot{ width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .windows-list{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .window-chip{ font-family:'JetBrains Mono', monospace; font-size: 12px; color: var(--mist); background: var(--water-light); border: 1px solid var(--water-border); border-radius: 20px; padding: 6px 12px; }
+  .window-chip.empty{ color: var(--mist-dim); font-family:'Inter', sans-serif; font-style: italic; border-style: dashed; background: transparent; }
+
+  .footnote{ font-size: 12px; color: var(--mist-dim); line-height:1.5; padding: 0 4px; }
+  .footnote a{ color: var(--gold); text-decoration:none; }
+
+  @media (max-width: 560px){
+    .gauge-wrap{ width: 120px; height: 80px; }
+    .gauge-num{ font-size: 28px; }
+    h1{ font-size: 24px; }
+  }
+  @media (prefers-reduced-motion: reduce){ *{ transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="panel">
+    <p class="eyebrow">Bow River · Trout Conditions</p>
+    <h1>Riffle</h1>
+    <p class="sub">Live flow, weather, and the day's best windows for the Bow River at Calgary.</p>
+    <div class="controls">
+      <div class="field">
+        <label for="dateInput">Date</label>
+        <input type="date" id="dateInput">
+      </div>
+      <div class="date-nav">
+        <button class="btn small ghost" id="prevDay" type="button" aria-label="Previous day">‹</button>
+        <button class="btn small" id="todayBtn" type="button">Today</button>
+        <button class="btn small ghost" id="nextDay" type="button" aria-label="Next day">›</button>
+      </div>
+      <button class="btn small ghost" id="refreshBtn" type="button">Refresh live data</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="score-row">
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 148 96" width="148" height="96">
+          <path d="M 12 86 A 62 62 0 0 1 136 86" fill="none" stroke="#0E211D" stroke-width="12" stroke-linecap="round"/>
+          <path id="gaugeArc" d="M 12 86 A 62 62 0 0 1 136 86" fill="none" stroke="var(--moss)" stroke-width="12" stroke-linecap="round" stroke-dasharray="195 195" stroke-dashoffset="195"/>
+        </svg>
+        <div class="gauge-num" id="gaugeNum">—</div>
+      </div>
+      <div class="score-info">
+        <span class="status-pill" id="statusPill">—</span>
+        <ul class="reasons" id="reasonsList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-head"><h2>Live conditions</h2></div>
+    <p class="live-status pending" id="liveStatus">Loading live data…</p>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="override-row">
+      <div class="field">
+        <label for="tempOverride">Water temp (°C)</label>
+        <input type="number" id="tempOverride" step="0.5" min="0" max="30" placeholder="auto">
+      </div>
+      <p class="override-help">The flow gauge doesn't report water temperature, so this is estimated from recent air temps. If you have a real reading, type it here to override — it's the single biggest factor in the score, and matters for fish safety in warm water.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section-head"><h2>Best windows — <span id="windowDate"></span></h2></div>
+    <svg class="tl" id="scoreSvg" viewBox="0 0 480 168" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:var(--moss)"></span> Good+</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--gold)"></span> Fair</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--rust)"></span> Poor</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--sky)"></span> Conditions score</div>
+    </div>
+    <div class="windows-list" id="windowsList"></div>
+  </div>
+
+  <p class="footnote">Riffle reads the Bow at Calgary gauge (Water Survey of Canada station 05BH004) for live flow and level, and Open-Meteo for weather. Trout-timing here is a heuristic — dawn/dusk, cloud cover, flow, pressure, water temp, and hatch likelihood — not a guarantee. Always check current conditions and your own safety before wading. When water is warm (above ~19–20 °C), consider not fishing: trout are badly stressed and often die after release in warm water.</p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===== Astronomy (sun only — solunar is a weak predictor for river trout) =====
+  const RAD = Math.PI/180, DAY_MS = 86400000, J2000 = 946728000000, OBLIQ = RAD*23.4397;
+  const BOW_LAT = 51.0447, BOW_LON = -114.0719; // Calgary
+  const STATION = '05BH004';
+
+  function toDays(d){ return (d.getTime()-J2000)/DAY_MS; }
+  function ra(l,b){ return Math.atan2(Math.sin(l)*Math.cos(OBLIQ)-Math.tan(b)*Math.sin(OBLIQ), Math.cos(l)); }
+  function dec(l,b){ return Math.asin(Math.sin(b)*Math.cos(OBLIQ)+Math.cos(b)*Math.sin(OBLIQ)*Math.sin(l)); }
+  function sunCoords(d){
+    const M = RAD*(357.5291+0.98560028*d);
+    const C = RAD*(1.9148*Math.sin(M)+0.02*Math.sin(2*M)+0.0003*Math.sin(3*M));
+    const L = M + C + RAD*102.9372 + Math.PI;
+    return { ra: ra(L,0), dec: dec(L,0) };
+  }
+  function sunAlt(date){
+    const d = toDays(date), c = sunCoords(d);
+    const H = RAD*(280.16+360.9856235*d) - RAD*-BOW_LON - c.ra;
+    const phi = RAD*BOW_LAT;
+    return Math.asin(Math.sin(phi)*Math.sin(c.dec)+Math.cos(phi)*Math.cos(c.dec)*Math.cos(H))/RAD;
+  }
+  function sunEvents(localMidnightMs){
+    let rise=null, set=null;
+    let prev = sunAlt(new Date(localMidnightMs));
+    for(let m=2; m<=1440; m+=2){
+      const cur = sunAlt(new Date(localMidnightMs+m*60000));
+      if(prev < -0.833 && cur >= -0.833 && !rise) rise = localMidnightMs+m*60000;
+      if(prev >= -0.833 && cur < -0.833 && !set) set = localMidnightMs+m*60000;
+      prev = cur;
+    }
+    return { rise, set };
+  }
+
+  // ===== State =====
+  const state = {
+    date: startOfLocalDay(new Date()),
+    flow: null,        // { discharge, level, trend }
+    weather: null,     // { airMax, airMin, cloud, precip, pressureTrend, summary }
+    waterTempEst: null,
+    waterTempOverride: null,
+    liveText: 'Loading live data…'
+  };
+
+  function startOfLocalDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function addDays(d,n){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()+n); }
+  function fmtTime(ms){ return new Date(ms).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+  function fmtDateInput(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  function isToday(d){ return startOfLocalDay(new Date()).getTime() === startOfLocalDay(d).getTime(); }
+
+  function effectiveWaterTemp(){
+    if(state.waterTempOverride != null) return state.waterTempOverride;
+    return state.waterTempEst;
+  }
+
+  // ===== DOM =====
+  const dateInput = document.getElementById('dateInput');
+  const prevDay = document.getElementById('prevDay');
+  const nextDay = document.getElementById('nextDay');
+  const todayBtn = document.getElementById('todayBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const gaugeArc = document.getElementById('gaugeArc');
+  const gaugeNum = document.getElementById('gaugeNum');
+  const statusPill = document.getElementById('statusPill');
+  const reasonsList = document.getElementById('reasonsList');
+  const liveStatus = document.getElementById('liveStatus');
+  const statGrid = document.getElementById('statGrid');
+  const tempOverride = document.getElementById('tempOverride');
+  const scoreSvg = document.getElementById('scoreSvg');
+  const windowDate = document.getElementById('windowDate');
+  const windowsList = document.getElementById('windowsList');
+  dateInput.value = fmtDateInput(state.date);
+
+  // ===== Live data: flow (Water Survey of Canada via MSC GeoMet) =====
+  async function fetchFlow(){
+    // Pull recent realtime readings for the Bow at Calgary and derive a trend.
+    const base = 'https://api.weather.gc.ca/collections/hydrometric-realtime/items';
+    const url = `${base}?STATION_NUMBER=${STATION}&limit=200&f=json`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('flow API ' + res.status);
+    const data = await res.json();
+    const feats = (data && data.features) || [];
+    if(!feats.length) throw new Error('no flow features');
+    // Each feature has properties incl. DATETIME, DISCHARGE, LEVEL (names per MSC schema).
+    const rows = feats.map(f => f.properties || {}).filter(p => p.DATETIME);
+    rows.sort((a,b)=> new Date(a.DATETIME) - new Date(b.DATETIME));
+    const withFlow = rows.filter(r => r.DISCHARGE != null && !isNaN(parseFloat(r.DISCHARGE)));
+    const withLevel = rows.filter(r => r.LEVEL != null && !isNaN(parseFloat(r.LEVEL)));
+    const latestFlow = withFlow.length ? parseFloat(withFlow[withFlow.length-1].DISCHARGE) : null;
+    const latestLevel = withLevel.length ? parseFloat(withLevel[withLevel.length-1].LEVEL) : null;
+    let trend = 'steady';
+    if(withFlow.length >= 6){
+      const recent = withFlow.slice(-6).map(r=>parseFloat(r.DISCHARGE));
+      const delta = recent[recent.length-1] - recent[0];
+      const pct = delta / Math.max(1, recent[0]);
+      trend = pct > 0.05 ? 'rising' : pct < -0.05 ? 'falling' : 'steady';
+    }
+    return { discharge: latestFlow, level: latestLevel, trend };
+  }
+
+  // ===== Live data: weather (Open-Meteo) =====
+  async function fetchWeather(date){
+    const ds = fmtDateInput(date);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${BOW_LAT}&longitude=${BOW_LON}`
+      + `&hourly=temperature_2m,surface_pressure,cloudcover,precipitation`
+      + `&daily=temperature_2m_max,temperature_2m_min`
+      + `&start_date=${ds}&end_date=${ds}&timezone=auto&past_days=7`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('weather API ' + res.status);
+    const data = await res.json();
+    const h = data.hourly;
+    if(!h || !h.temperature_2m) throw new Error('no weather');
+    // restrict hourly arrays to the selected day
+    const idx = h.time.map((t,i)=>({t,i})).filter(o => o.t.slice(0,10) === ds).map(o=>o.i);
+    const pick = arr => idx.map(i => arr[i]).filter(v => v != null);
+    const temps = pick(h.temperature_2m);
+    const press = pick(h.surface_pressure);
+    const clouds = pick(h.cloudcover);
+    const precs = pick(h.precipitation);
+    const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+    const airMax = data.daily ? data.daily.temperature_2m_max[0] : Math.max(...temps);
+    const airMin = data.daily ? data.daily.temperature_2m_min[0] : Math.min(...temps);
+    const cloudAvg = clouds.length ? avg(clouds) : 50;
+    const cloud = cloudAvg < 30 ? 'clear' : cloudAvg < 70 ? 'partly_cloudy' : 'overcast';
+    const precipSum = precs.reduce((x,y)=>x+y,0);
+    const precip = precipSum <= 0.2 ? 'none' : precipSum <= 4 ? 'light' : 'heavy';
+    let pressureTrend = 'steady';
+    if(press.length >= 2){
+      const d = press[press.length-1]-press[0];
+      pressureTrend = d <= -1.5 ? 'falling' : d >= 1.5 ? 'rising' : 'steady';
+    }
+    // 7-day trailing mean air temp to estimate water temp
+    const recentAir = (h.temperature_2m || []).slice(0, Math.max(0, (idx[0]||0))).filter(v=>v!=null);
+    const trailing = recentAir.length ? avg(recentAir.slice(-72)) : avg(temps); // ~3 days
+    const cloudLabel = cloud==='overcast'?'Overcast':cloud==='partly_cloudy'?'Partly cloudy':'Clear';
+    const summary = `${cloudLabel}, air ${Math.round(airMin)}–${Math.round(airMax)} °C, pressure ${pressureTrend}${precip!=='none'?`, ${precip} rain`:''}.`;
+    return { airMax, airMin, cloud, precip, pressureTrend, summary, trailingAir: trailing, dayMeanAir: avg(temps) };
+  }
+
+  // Estimate water temp: trout streams lag and dampen air temp. Use a blend of
+  // trailing multi-day air mean and the day's mean, pulled toward ~10°C inertia.
+  function estimateWaterTemp(weather){
+    if(!weather) return null;
+    const base = (weather.trailingAir*0.6 + weather.dayMeanAir*0.4);
+    // dampen toward a cool baseline; rivers rarely track air 1:1
+    const est = 0.65*base + 0.35*10;
+    return Math.max(0, Math.min(26, est));
+  }
+
+  // ===== Scoring =====
+  function flowAssessment(discharge){
+    // Bow at Calgary: typical fishable summer flows roughly 80–180 m³/s; lower in
+    // shoulder seasons. These are heuristic bands, not gospel.
+    if(discharge == null) return { label:'unknown', adj:0, note:'Flow data unavailable.' };
+    if(discharge < 40) return { label:'very low', adj:-6, note:'Low, clear water — fish are spooky; go light and stealthy.' };
+    if(discharge <= 120) return { label:'prime', adj:12, note:'Flow in a prime, wadeable range.' };
+    if(discharge <= 200) return { label:'good but pushy', adj:4, note:'On the higher side — fishable but wade carefully.' };
+    if(discharge <= 300) return { label:'high', adj:-8, note:'High and pushy — focus on edges and soft water; wading is risky.' };
+    return { label:'blown out', adj:-22, note:'Very high / blown out — likely off-colour and unsafe to wade.' };
+  }
+  function tempAssessment(c){
+    if(c == null) return { band:'unknown', adj:0, note:'Water temp unknown.' };
+    if(c < 4)  return { band:'frigid', adj:-12, note:'Very cold water — metabolism low, expect a short midday bite at best.' };
+    if(c < 8)  return { band:'cold', adj:-4, note:'Cold water — slow, deep presentations; midday is best.' };
+    if(c < 12) return { band:'cool', adj:6, note:'Cool water warming into a good range.' };
+    if(c < 17) return { band:'prime', adj:14, note:'Prime trout water temperature.' };
+    if(c < 19) return { band:'warm', adj:-2, note:'Getting warm — fish early and late, ease off midday.' };
+    if(c < 21) return { band:'too warm', adj:-16, note:'Warm enough to stress trout — fish dawn only, or rest the river.' };
+    return { band:'dangerous', adj:-30, note:'Too warm to fish ethically — trout often die after release. Consider not fishing.' };
+  }
+  function seasonOf(date){
+    const m = date.getMonth();
+    if(m===11||m<2) return 'winter';
+    if(m<5) return 'spring';
+    if(m<8) return 'summer';
+    return 'fall';
+  }
+
+  function computeDay(localMidnightMs){
+    const sun = sunEvents(localMidnightMs);
+    const wTemp = effectiveWaterTemp();
+    const flow = flowAssessment(state.flow ? state.flow.discharge : null);
+    const temp = tempAssessment(wTemp);
+    const cloud = state.weather ? state.weather.cloud : 'partly_cloudy';
+    const precip = state.weather ? state.weather.precip : 'none';
+    const pressureTrend = state.weather ? state.weather.pressureTrend : 'steady';
+    const season = seasonOf(new Date(localMidnightMs));
+
+    const cloudAdj = cloud==='overcast' ? 10 : cloud==='clear' ? -4 : 2;
+    const precipAdj = precip==='light' ? 4 : precip==='heavy' ? -10 : 0;
+    const pressAdj = pressureTrend==='falling' ? 6 : pressureTrend==='rising' ? -6 : 0;
+
+    function scoreAt(tMs){
+      let s = 34;
+      const alt = sunAlt(new Date(tMs));
+      // Low-light windows: trout feed hardest near dawn/dusk.
+      const nearDawn = sun.rise && Math.abs(tMs - sun.rise) <= 75*60000;
+      const nearDusk = sun.set && Math.abs(tMs - sun.set) <= 75*60000;
+      const isDay = alt > 0;
+      const warmWater = wTemp != null && wTemp >= 17;
+      const coldWater = wTemp != null && wTemp < 8;
+
+      if(nearDawn || nearDusk) s += 22;
+      // Midday: good in cold water, poor in warm water
+      const hour = new Date(tMs).getHours();
+      const midday = hour >= 11 && hour <= 15;
+      if(midday){
+        if(coldWater) s += 14;        // winter/cold: midday warmth matters
+        else if(warmWater) s -= 16;   // summer heat: avoid midday
+        else s += 2;
+      }
+      if(!isDay && !nearDawn && !nearDusk) s -= 10; // full dark, away from edges
+      if(cloud==='overcast' && isDay) s += 6;       // overcast extends the day bite
+
+      s += cloudAdj + precipAdj + pressAdj;
+      s += flow.adj + temp.adj;
+
+      // Hatch hint: mid-morning to evening in mild water gets a small bump
+      if(wTemp != null && wTemp >= 9 && wTemp < 18 && hour >= 9 && hour <= 20) s += 4;
+
+      return Math.max(0, Math.min(100, Math.round(s)));
+    }
+
+    let peak = 0, peakT = null;
+    for(let m=0; m<=1440; m+=10){
+      const t = localMidnightMs + m*60000;
+      const sc = scoreAt(t);
+      if(sc > peak){ peak = sc; peakT = t; }
+    }
+    return { sun, flow, temp, cloud, precip, pressureTrend, season, scoreAt, peak, peakT, wTemp };
+  }
+
+  function statusFor(score){
+    if(score>=75) return { label:'Excellent', color:'var(--moss)' };
+    if(score>=58) return { label:'Good', color:'var(--moss)' };
+    if(score>=40) return { label:'Fair', color:'var(--gold)' };
+    return { label:'Poor', color:'var(--rust)' };
+  }
+
+  // ===== Render =====
+  function render(){
+    const mid = state.date.getTime();
+    const day = computeDay(mid);
+
+    // gauge
+    const st = statusFor(day.peak);
+    const circ = 195;
+    gaugeArc.style.stroke = st.color;
+    gaugeArc.setAttribute('stroke-dashoffset', circ - (day.peak/100)*circ);
+    gaugeNum.innerHTML = day.peak + '<span>/100</span>';
+    statusPill.textContent = st.label + ' day';
+    statusPill.style.color = st.color;
+    statusPill.style.border = '1px solid ' + st.color;
+    statusPill.style.background = 'rgba(255,255,255,0.05)';
+
+    const reasons = [];
+    if(day.peakT) reasons.push(`Best window around ${fmtTime(day.peakT)}.`);
+    reasons.push(`Flow: ${day.flow.label}. ${day.flow.note}`);
+    reasons.push(`Water temp: ${day.temp.band}${day.wTemp!=null?` (~${Math.round(day.wTemp)} °C)`:''}. ${day.temp.note}`);
+    const skyWord = day.cloud==='overcast'?'Overcast skies favour a longer bite.':day.cloud==='clear'?'Bright sun — focus on low light and shade.':'Mixed cloud.';
+    reasons.push(skyWord);
+    if(day.pressureTrend==='falling') reasons.push('Falling pressure ahead of weather often turns fish on.');
+    reasonsList.innerHTML = reasons.map(r=>`<li>${r}</li>`).join('');
+
+    // stat cards
+    renderStats(day);
+
+    // timeline
+    windowDate.textContent = state.date.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+    renderScoreChart(day, mid);
+  }
+
+  function renderStats(day){
+    const cards = [];
+    const f = state.flow;
+    if(f && f.discharge != null){
+      const tcls = f.trend==='rising'?'trend-up':f.trend==='falling'?'trend-down':'trend-steady';
+      const tword = f.trend==='rising'?'▲ rising':f.trend==='falling'?'▼ falling':'– steady';
+      cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">${f.discharge.toFixed(0)}<small> m³/s</small></div><div class="stat-sub ${tcls}">${tword}</div><div class="stat-status" style="color:${statusFor(day.peak).color}">${day.flow.label}</div></div>`);
+    } else {
+      cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">—</div><div class="stat-sub trend-steady">gauge unavailable</div></div>`);
+    }
+    if(f && f.level != null){
+      cards.push(`<div class="stat-card"><div class="stat-label">Water level</div><div class="stat-value">${f.level.toFixed(2)}<small> m</small></div></div>`);
+    }
+    const wt = effectiveWaterTemp();
+    const tband = tempAssessment(wt);
+    const tcolor = (tband.band==='prime'||tband.band==='cool')?'var(--moss)':(tband.band==='warm'||tband.band==='cold')?'var(--gold)':(tband.band==='unknown')?'var(--mist-dim)':'var(--rust)';
+    cards.push(`<div class="stat-card"><div class="stat-label">Water temp ${state.waterTempOverride!=null?'(set)':'(est)'}</div><div class="stat-value">${wt!=null?wt.toFixed(1):'—'}<small> °C</small></div><div class="stat-status" style="color:${tcolor}">${tband.band}</div></div>`);
+    if(state.weather){
+      cards.push(`<div class="stat-card"><div class="stat-label">Air temp</div><div class="stat-value">${Math.round(state.weather.airMin)}–${Math.round(state.weather.airMax)}<small> °C</small></div><div class="stat-sub trend-steady">${state.weather.cloud.replace('_',' ')}</div></div>`);
+    }
+    statGrid.innerHTML = cards.join('');
+  }
+
+  function renderScoreChart(day, mid){
+    const W=480, H=168, top=8, chartH=120, bottom=top+chartH, axisY=bottom+18;
+    const xF = m => (m/1440)*W;
+    const yF = s => top + (100-Math.max(0,Math.min(100,s)))/100*chartH;
+    let svg = `<rect x="0" y="${top}" width="${W}" height="${chartH}" fill="#0B1614" rx="4"/>`;
+    const bands = [
+      {from:0,to:40,color:'rgba(201,122,107,0.16)'},
+      {from:40,to:58,color:'rgba(224,184,79,0.14)'},
+      {from:58,to:75,color:'rgba(143,190,115,0.12)'},
+      {from:75,to:100,color:'rgba(143,190,115,0.22)'}
+    ];
+    bands.forEach(b=>{ const y1=yF(b.to),y2=yF(b.from); svg+=`<rect x="0" y="${y1.toFixed(1)}" width="${W}" height="${(y2-y1).toFixed(1)}" fill="${b.color}"/>`; });
+    const pts=[]; for(let m=0;m<=1440;m+=6) pts.push({m, s:day.scoreAt(mid+m*60000)});
+    let line=''; pts.forEach((p,i)=>{ line += (i===0?`M ${xF(p.m).toFixed(1)} ${yF(p.s).toFixed(1)}`:` L ${xF(p.m).toFixed(1)} ${yF(p.s).toFixed(1)}`); });
+    svg += `<path d="${line} L ${W} ${bottom} L 0 ${bottom} Z" fill="rgba(143,190,115,0.18)"/>`;
+    svg += `<path d="${line}" fill="none" stroke="var(--moss)" stroke-width="2.25"/>`;
+    // sunrise/sunset markers
+    [['rise','↑'],['set','↓']].forEach(([k,g])=>{
+      const t = day.sun[k];
+      if(t){ const x=xF((t-mid)/60000).toFixed(1); svg+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="var(--gold)" stroke-width="1" stroke-dasharray="3,3"/><text x="${x}" y="${top+10}" font-size="9" fill="var(--gold)" text-anchor="middle">${g}</text>`; }
+    });
+    if(isToday(state.date)){
+      const now=new Date(); const nx=xF((now-mid)/60000).toFixed(1);
+      svg += `<line x1="${nx}" y1="${top}" x2="${nx}" y2="${bottom}" stroke="var(--mist)" stroke-width="1" stroke-dasharray="2,2"/>`;
+    }
+    [0,4,8,12,16,20,24].forEach(h=>{ const x=xF(h*60).toFixed(1); svg+=`<text x="${x}" y="${axisY}" font-family="JetBrains Mono, monospace" font-size="9.5" fill="#74948C" text-anchor="middle">${h===24?'24':String(h).padStart(2,'0')}</text>`; });
+    scoreSvg.innerHTML = svg;
+
+    // windows
+    const wins=[]; let cur=null;
+    for(let m=0;m<=1440;m+=10){ const s=day.scoreAt(mid+m*60000); const above=s>=58;
+      if(above&&cur===null) cur=mid+m*60000;
+      if((!above||m===1440)&&cur!==null){ wins.push({start:cur,end:mid+m*60000}); cur=null; } }
+    if(!wins.length){ windowsList.innerHTML=`<span class="window-chip empty">No Good+ window — best is ${day.peakT?fmtTime(day.peakT):'—'} at ${day.peak}/100.</span>`; }
+    else windowsList.innerHTML = wins.map(w=>`<span class="window-chip">${fmtTime(w.start)} – ${fmtTime(w.end)}</span>`).join('');
+  }
+
+  // ===== Live data orchestration =====
+  let liveSeq = 0;
+  async function refreshLive(){
+    const seq = ++liveSeq;
+    state.liveText = 'Loading live data…';
+    liveStatus.textContent = state.liveText;
+    liveStatus.classList.add('pending');
+
+    const [flowRes, wxRes] = await Promise.allSettled([ fetchFlow(), fetchWeather(state.date) ]);
+    if(seq !== liveSeq) return;
+
+    if(flowRes.status === 'fulfilled') state.flow = flowRes.value;
+    else state.flow = null;
+
+    if(wxRes.status === 'fulfilled'){
+      state.weather = wxRes.value;
+      state.waterTempEst = estimateWaterTemp(wxRes.value);
+    } else {
+      state.weather = null;
+    }
+
+    const parts = [];
+    if(state.weather) parts.push(state.weather.summary);
+    else parts.push('Weather unavailable.');
+    if(!state.flow) parts.push('Flow gauge unavailable right now.');
+    state.liveText = parts.join(' ');
+    liveStatus.textContent = state.liveText;
+    liveStatus.classList.remove('pending');
+
+    // reflect estimate into placeholder
+    if(state.waterTempEst != null && state.waterTempOverride == null){
+      tempOverride.placeholder = `auto ≈ ${state.waterTempEst.toFixed(1)}`;
+    }
+    render();
+  }
+
+  // ===== Events =====
+  dateInput.addEventListener('change', ()=>{
+    const p = dateInput.value.split('-').map(Number);
+    if(p.length===3){ state.date = new Date(p[0],p[1]-1,p[2]); render(); refreshLive(); }
+  });
+  prevDay.addEventListener('click', ()=>{ state.date=addDays(state.date,-1); dateInput.value=fmtDateInput(state.date); render(); refreshLive(); });
+  nextDay.addEventListener('click', ()=>{ state.date=addDays(state.date,1); dateInput.value=fmtDateInput(state.date); render(); refreshLive(); });
+  todayBtn.addEventListener('click', ()=>{ state.date=startOfLocalDay(new Date()); dateInput.value=fmtDateInput(state.date); render(); refreshLive(); });
+  refreshBtn.addEventListener('click', refreshLive);
+  tempOverride.addEventListener('change', ()=>{
+    const v = parseFloat(tempOverride.value);
+    state.waterTempOverride = isNaN(v) ? null : v;
+    render();
+  });
+
+  // ===== Init =====
+  render();
+  refreshLive();
+})();
+</script>
+</body>
+</html>
