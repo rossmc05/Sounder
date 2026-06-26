@@ -258,21 +258,27 @@
 
   // ===== Live data: flow (Water Survey of Canada via MSC GeoMet) =====
   async function fetchFlow(){
-    // Pull recent realtime readings for the Bow at Calgary and derive a trend.
+    // Request newest-first so the most recent reading is at the top. Without an
+    // explicit sort the API returns the OLDEST rows of the 30-day window first,
+    // which yields a stale value.
     const base = 'https://api.weather.gc.ca/collections/hydrometric-realtime/items';
-    const url = `${base}?STATION_NUMBER=${STATION}&limit=200&f=json`;
+    const url = `${base}?STATION_NUMBER=${STATION}&sortby=-DATETIME&limit=100&f=json`;
     const res = await fetch(url);
     if(!res.ok) throw new Error('flow API ' + res.status);
     const data = await res.json();
     const feats = (data && data.features) || [];
     if(!feats.length) throw new Error('no flow features');
-    // Each feature has properties incl. DATETIME, DISCHARGE, LEVEL (names per MSC schema).
+    // Rows arrive newest-first; normalise and sort defensively (newest last) so
+    // our slice logic is unambiguous regardless of what the server returned.
     const rows = feats.map(f => f.properties || {}).filter(p => p.DATETIME);
-    rows.sort((a,b)=> new Date(a.DATETIME) - new Date(b.DATETIME));
+    rows.sort((a,b)=> new Date(a.DATETIME) - new Date(b.DATETIME)); // oldest -> newest
     const withFlow = rows.filter(r => r.DISCHARGE != null && !isNaN(parseFloat(r.DISCHARGE)));
     const withLevel = rows.filter(r => r.LEVEL != null && !isNaN(parseFloat(r.LEVEL)));
-    const latestFlow = withFlow.length ? parseFloat(withFlow[withFlow.length-1].DISCHARGE) : null;
-    const latestLevel = withLevel.length ? parseFloat(withLevel[withLevel.length-1].LEVEL) : null;
+    const latestFlowRow = withFlow.length ? withFlow[withFlow.length-1] : null;
+    const latestLevelRow = withLevel.length ? withLevel[withLevel.length-1] : null;
+    const latestFlow = latestFlowRow ? parseFloat(latestFlowRow.DISCHARGE) : null;
+    const latestLevel = latestLevelRow ? parseFloat(latestLevelRow.LEVEL) : null;
+    const asOf = latestFlowRow ? latestFlowRow.DATETIME : (latestLevelRow ? latestLevelRow.DATETIME : null);
     let trend = 'steady';
     if(withFlow.length >= 6){
       const recent = withFlow.slice(-6).map(r=>parseFloat(r.DISCHARGE));
@@ -280,8 +286,9 @@
       const pct = delta / Math.max(1, recent[0]);
       trend = pct > 0.05 ? 'rising' : pct < -0.05 ? 'falling' : 'steady';
     }
-    return { discharge: latestFlow, level: latestLevel, trend };
+    return { discharge: latestFlow, level: latestLevel, trend, asOf };
   }
+
 
   // ===== Live data: weather (Open-Meteo) =====
   async function fetchWeather(date){
@@ -334,14 +341,15 @@
 
   // ===== Scoring =====
   function flowAssessment(discharge){
-    // Bow at Calgary: typical fishable summer flows roughly 80–180 m³/s; lower in
-    // shoulder seasons. These are heuristic bands, not gospel.
+    // Bow at Calgary is a large tailwater. Summer flows commonly run 150–300
+    // m³/s and remain very fishable; it takes a big freshet spike to blow out.
+    // These bands are calibrated to that scale (heuristic, refine with experience).
     if(discharge == null) return { label:'unknown', adj:0, note:'Flow data unavailable.' };
-    if(discharge < 40) return { label:'very low', adj:-6, note:'Low, clear water — fish are spooky; go light and stealthy.' };
-    if(discharge <= 120) return { label:'prime', adj:12, note:'Flow in a prime, wadeable range.' };
-    if(discharge <= 200) return { label:'good but pushy', adj:4, note:'On the higher side — fishable but wade carefully.' };
-    if(discharge <= 300) return { label:'high', adj:-8, note:'High and pushy — focus on edges and soft water; wading is risky.' };
-    return { label:'blown out', adj:-22, note:'Very high / blown out — likely off-colour and unsafe to wade.' };
+    if(discharge < 80) return { label:'very low', adj:-4, note:'Low, clear water — fish are spooky; go light and stealthy.' };
+    if(discharge <= 280) return { label:'prime', adj:12, note:'Flow in a prime, fishable range for the Bow.' };
+    if(discharge <= 380) return { label:'high but fishable', adj:2, note:'On the higher side — focus on edges and soft water; wade with care.' };
+    if(discharge <= 500) return { label:'high', adj:-10, note:'High and pushy — likely off-colour; wading gets risky.' };
+    return { label:'blown out', adj:-22, note:'Very high / blown out — dirty water and unsafe to wade.' };
   }
   function tempAssessment(c){
     if(c == null) return { band:'unknown', adj:0, note:'Water temp unknown.' };
@@ -461,7 +469,11 @@
     if(f && f.discharge != null){
       const tcls = f.trend==='rising'?'trend-up':f.trend==='falling'?'trend-down':'trend-steady';
       const tword = f.trend==='rising'?'▲ rising':f.trend==='falling'?'▼ falling':'– steady';
-      cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">${f.discharge.toFixed(0)}<small> m³/s</small></div><div class="stat-sub ${tcls}">${tword}</div><div class="stat-status" style="color:${statusFor(day.peak).color}">${day.flow.label}</div></div>`);
+      let asOfStr = '';
+      if(f.asOf){
+        try{ asOfStr = new Date(f.asOf).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){}
+      }
+      cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">${f.discharge.toFixed(0)}<small> m³/s</small></div><div class="stat-sub ${tcls}">${tword}</div><div class="stat-status" style="color:${statusFor(day.peak).color}">${day.flow.label}</div>${asOfStr?`<div class="stat-sub trend-steady">as of ${asOfStr}</div>`:''}</div>`);
     } else {
       cards.push(`<div class="stat-card"><div class="stat-label">Flow (discharge)</div><div class="stat-value">—</div><div class="stat-sub trend-steady">gauge unavailable</div></div>`);
     }
